@@ -123,9 +123,9 @@ class LyricsManager {
     }
 
     // Fetch synced lyrics from LrcLib with resilient waterfall search
-    func fetchSyncedLyrics(title: String, artist: String, duration: TimeInterval, completion: @escaping ([LyricLine]?) -> Void) {
+    func fetchSyncedLyrics(title: String, artist: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         guard !title.isEmpty else {
-            completion(nil)
+            completion(nil, nil, nil)
             return
         }
 
@@ -136,19 +136,19 @@ class LyricsManager {
         print("🔍 Syncing lyrics waterfall started: Title='\(title)' -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
 
         // Step 1: Try precise GET with original metadata
-        tryPreciseGet(title: title, artist: artist, duration: durationSec) { [weak self] lines in
+        tryPreciseGet(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
             if let lines = lines {
-                completion(lines)
+                completion(lines, mTitle, mArtist)
                 return
             }
 
             // Step 2: Try precise GET with cleaned metadata (if different)
-            guard let self = self else { completion(nil); return }
+            guard let self = self else { completion(nil, nil, nil); return }
             if cleanedTitle != title || cleanedArtist != artist {
                 print("🔍 Step 2: Trying precise GET with cleaned metadata...")
-                self.tryPreciseGet(title: cleanedTitle, artist: cleanedArtist, duration: durationSec) { lines in
+                self.tryPreciseGet(title: cleanedTitle, artist: cleanedArtist, duration: durationSec) { lines, mTitle, mArtist in
                     if let lines = lines {
-                        completion(lines)
+                        completion(lines, mTitle, mArtist)
                         return
                     }
                     self.tryTraditionalAndSimplifiedWaterfall(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
@@ -159,7 +159,7 @@ class LyricsManager {
         }
     }
 
-    private func tryTraditionalAndSimplifiedWaterfall(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?) -> Void) {
+    private func tryTraditionalAndSimplifiedWaterfall(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         let tradTitle = toTraditional(title)
         let tradArtist = toTraditional(artist)
         let simpTitle = toSimplified(title)
@@ -168,12 +168,12 @@ class LyricsManager {
         // Step 3: Try precise GET with Traditional Chinese
         if tradTitle != title || tradArtist != artist {
             print("🔍 Step 3: Trying precise GET with Traditional Chinese ('\(tradTitle)' by '\(tradArtist)')...")
-            self.tryPreciseGet(title: tradTitle, artist: tradArtist, duration: duration) { [weak self] lines in
+            self.tryPreciseGet(title: tradTitle, artist: tradArtist, duration: duration) { [weak self] lines, mTitle, mArtist in
                 if let lines = lines {
-                    completion(lines)
+                    completion(lines, mTitle, mArtist)
                     return
                 }
-                guard let self = self else { completion(nil); return }
+                guard let self = self else { completion(nil, nil, nil); return }
                 self.trySimplifiedAndKeywordWaterfall(title: title, artist: artist, tradTitle: tradTitle, tradArtist: tradArtist, simpTitle: simpTitle, simpArtist: simpArtist, duration: duration, completion: completion)
             }
         } else {
@@ -181,16 +181,16 @@ class LyricsManager {
         }
     }
 
-    private func trySimplifiedAndKeywordWaterfall(title: String, artist: String, tradTitle: String, tradArtist: String, simpTitle: String, simpArtist: String, duration: Int, completion: @escaping ([LyricLine]?) -> Void) {
+    private func trySimplifiedAndKeywordWaterfall(title: String, artist: String, tradTitle: String, tradArtist: String, simpTitle: String, simpArtist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         // Step 4: Try precise GET with Simplified Chinese
         if simpTitle != title || simpArtist != artist {
             print("🔍 Step 4: Trying precise GET with Simplified Chinese ('\(simpTitle)' by '\(simpArtist)')...")
-            self.tryPreciseGet(title: simpTitle, artist: simpArtist, duration: duration) { [weak self] lines in
+            self.tryPreciseGet(title: simpTitle, artist: simpArtist, duration: duration) { [weak self] lines, mTitle, mArtist in
                 if let lines = lines {
-                    completion(lines)
+                    completion(lines, mTitle, mArtist)
                     return
                 }
-                guard let self = self else { completion(nil); return }
+                guard let self = self else { completion(nil, nil, nil); return }
                 self.tryKeywordSearches(title: title, artist: artist, tradTitle: tradTitle, tradArtist: tradArtist, simpTitle: simpTitle, simpArtist: simpArtist, duration: duration, completion: completion)
             }
         } else {
@@ -198,43 +198,52 @@ class LyricsManager {
         }
     }
 
-    private func tryKeywordSearches(title: String, artist: String, tradTitle: String, tradArtist: String, simpTitle: String, simpArtist: String, duration: Int, completion: @escaping ([LyricLine]?) -> Void) {
+    private func tryKeywordSearches(title: String, artist: String, tradTitle: String, tradArtist: String, simpTitle: String, simpArtist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         // Step 5: Try keyword search with Traditional Chinese
         let tradQuery = "\(tradTitle) \(tradArtist)"
         print("🔍 Step 5: Trying keyword search with Traditional query: '\(tradQuery)'")
-        self.tryKeywordSearch(query: tradQuery, duration: duration, targetArtist: tradArtist, targetTitle: tradTitle) { [weak self] lines in
+        self.tryKeywordSearch(query: tradQuery, duration: duration, targetArtist: tradArtist, targetTitle: tradTitle) { [weak self] lines, mTitle, mArtist in
             if let lines = lines {
-                completion(lines)
+                completion(lines, mTitle, mArtist)
                 return
             }
             
             // Step 6: Try keyword search with Simplified Chinese
-            guard let self = self else { completion(nil); return }
+            guard let self = self else { completion(nil, nil, nil); return }
             let simpQuery = "\(simpTitle) \(simpArtist)"
             print("🔍 Step 6: Trying keyword search with Simplified query: '\(simpQuery)'")
-            self.tryKeywordSearch(query: simpQuery, duration: duration, targetArtist: simpArtist, targetTitle: simpTitle) { lines in
+            self.tryKeywordSearch(query: simpQuery, duration: duration, targetArtist: simpArtist, targetTitle: simpTitle) { lines, mTitle, mArtist in
                 if let lines = lines {
-                    completion(lines)
+                    completion(lines, mTitle, mArtist)
                     return
                 }
                 
                 // Step 7: Try keyword search with Cleaned original query
                 let cleanQuery = "\(title) \(artist)"
                 print("🔍 Step 7: Trying keyword search with Cleaned query: '\(cleanQuery)'")
-                self.tryKeywordSearch(query: cleanQuery, duration: duration, targetArtist: artist, targetTitle: title) { lines in
+                self.tryKeywordSearch(query: cleanQuery, duration: duration, targetArtist: artist, targetTitle: title) { lines, mTitle, mArtist in
                     if let lines = lines {
-                        completion(lines)
+                        completion(lines, mTitle, mArtist)
                         return
                     }
                     
-                    // Step 8: Last resort: search ONLY song title, and filter (strict title check is enabled to guarantee correctness!)
-                    print("🔍 Step 8: Last resort keyword search by song title: '\(title)'")
-                    self.tryKeywordSearch(query: title, duration: duration, targetArtist: artist, targetTitle: title, strictArtistCheck: false, strictTitleCheck: true) { lines in
+                    // Step 7.5: Search ONLY song title, but enforce STRICT artist matching (e.g. for cover songs)
+                    print("🔍 Step 7.5: Searching by song title ONLY but keeping strict artist matching for cover songs: '\(title)'")
+                    self.tryKeywordSearch(query: title, duration: duration, targetArtist: artist, targetTitle: title, strictArtistCheck: true, strictTitleCheck: true) { lines, mTitle, mArtist in
                         if let lines = lines {
-                            completion(lines)
-                        } else {
-                            print("✗ No synced lyrics found for track.")
-                            completion(nil)
+                            completion(lines, mTitle, mArtist)
+                            return
+                        }
+                        
+                        // Step 8: Last resort: search ONLY song title, and filter (strict title check is enabled to guarantee correctness!)
+                        print("🔍 Step 8: Last resort keyword search by song title: '\(title)'")
+                        self.tryKeywordSearch(query: title, duration: duration, targetArtist: artist, targetTitle: title, strictArtistCheck: false, strictTitleCheck: true) { lines, mTitle, mArtist in
+                            if let lines = lines {
+                                completion(lines, mTitle, mArtist)
+                            } else {
+                                print("✗ No synced lyrics found for track.")
+                                completion(nil, nil, nil)
+                            }
                         }
                     }
                 }
@@ -242,7 +251,7 @@ class LyricsManager {
         }
     }
 
-    private func tryPreciseGet(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?) -> Void) {
+    private func tryPreciseGet(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         
@@ -255,7 +264,7 @@ class LyricsManager {
         }
         
         guard let url = URL(string: urlString) else {
-            completion(nil)
+            completion(nil, nil, nil)
             return
         }
         
@@ -264,12 +273,12 @@ class LyricsManager {
         
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self, let data = data, error == nil else {
-                completion(nil)
+                completion(nil, nil, nil)
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                completion(nil)
+                completion(nil, nil, nil)
                 return
             }
             
@@ -279,23 +288,23 @@ class LyricsManager {
                     let parsed = self.parseLRC(syncedLrc)
                     if !parsed.isEmpty {
                         print("✓ Success: Precise lyrics match found!")
-                        completion(parsed)
+                        completion(parsed, title, artist)
                         return
                     }
                 }
             } catch {
                 print("✗ Failed to parse precise GET response: \(error)")
             }
-            completion(nil)
+            completion(nil, nil, nil)
         }.resume()
     }
 
-    private func tryKeywordSearch(query: String, duration: Int, targetArtist: String, targetTitle: String, strictArtistCheck: Bool = true, strictTitleCheck: Bool = true, completion: @escaping ([LyricLine]?) -> Void) {
+    private func tryKeywordSearch(query: String, duration: Int, targetArtist: String, targetTitle: String, strictArtistCheck: Bool = true, strictTitleCheck: Bool = true, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://lrclib.net/api/search?q=\(encodedQuery)"
         
         guard let url = URL(string: urlString) else {
-            completion(nil)
+            completion(nil, nil, nil)
             return
         }
         
@@ -304,7 +313,7 @@ class LyricsManager {
         
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self, let data = data, error == nil else {
-                completion(nil)
+                completion(nil, nil, nil)
                 return
             }
             
@@ -396,8 +405,10 @@ class LyricsManager {
                        let syncedLrc = firstMatch["syncedLyrics"] as? String {
                         let parsed = self.parseLRC(syncedLrc)
                         if !parsed.isEmpty {
-                            print("✓ Success: Synced lyrics found via keyword search fallback ('\(firstMatch["trackName"] ?? "")' by '\(firstMatch["artistName"] ?? "")')")
-                            completion(parsed)
+                            let matchTitle = firstMatch["trackName"] as? String
+                            let matchArtist = firstMatch["artistName"] as? String
+                            print("✓ Success: Synced lyrics found via keyword search fallback ('\(matchTitle ?? "")' by '\(matchArtist ?? "")')")
+                            completion(parsed, matchTitle, matchArtist)
                             return
                         }
                     }
@@ -405,7 +416,7 @@ class LyricsManager {
             } catch {
                 print("✗ Failed to parse search response: \(error)")
             }
-            completion(nil)
+            completion(nil, nil, nil)
         }.resume()
     }
 }

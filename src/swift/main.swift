@@ -28,6 +28,8 @@ class AppState: ObservableObject {
     @Published var lyricLines: [LyricLine] = []
     @Published var activeLyricIndex: Int? = nil
     @Published var lyricsLoading = false
+    @Published var matchedTitle = ""
+    @Published var matchedArtist = ""
     
     // Playback States
     @Published var trackTitle = "Not Playing"
@@ -328,12 +330,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             AppState.shared.lyricsLoading = true
             AppState.shared.lyricLines = []
             AppState.shared.activeLyricIndex = nil
+            AppState.shared.matchedTitle = ""
+            AppState.shared.matchedArtist = ""
             
-            LyricsManager.shared.fetchSyncedLyrics(title: title, artist: artist, duration: duration) { lines in
+            let targetTitle = title
+            let targetArtist = artist
+            LyricsManager.shared.fetchSyncedLyrics(title: title, artist: artist, duration: duration) { lines, mTitle, mArtist in
                 DispatchQueue.main.async {
+                    // Prevent race conditions: only update if the active playing song has not changed
+                    guard targetTitle == AppState.shared.trackTitle && targetArtist == AppState.shared.trackArtist else {
+                        print("⚠️ Ignoring stale lyrics fetch result for '\(targetTitle)' by '\(targetArtist)' (Current playing is '\(AppState.shared.trackTitle)' by '\(AppState.shared.trackArtist)')")
+                        return
+                    }
                     AppState.shared.lyricsLoading = false
                     if let lines = lines {
                         AppState.shared.lyricLines = lines
+                        AppState.shared.matchedTitle = mTitle ?? ""
+                        AppState.shared.matchedArtist = mArtist ?? ""
                     }
                 }
             }

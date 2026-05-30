@@ -5,12 +5,19 @@ struct SidebarLyricsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
-                Text("Lyrics")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Lyrics")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    if !state.matchedTitle.isEmpty {
+                        Text("Matched: \(state.matchedTitle) - \(state.matchedArtist)")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.4))
+                            .lineLimit(1)
+                    }
+                }
                 Spacer()
                 Button(action: {
                     AppState.shared.showSidebarLyrics = false
