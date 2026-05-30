@@ -33,6 +33,27 @@ This will compile all Swift source files, assemble the native application bundle
 
 ---
 
+## 🔓 macOS Gatekeeper & Unsigned Warning Resolution
+
+Since the pre-compiled `.app` package distributed in GitHub Releases is not digitally signed with an Apple Developer Account, macOS Gatekeeper may block you from opening it, displaying a warning such as *"Open YouTube Music is damaged and can't be opened"* or *"developer cannot be verified"*. 
+
+You can easily resolve this using one of the following two standard macOS methods:
+
+### Method 1: Finder Right-Click Bypass (Recommended)
+1. Locate the extracted **Open YouTube Music** application in your `Applications` or `Downloads` folder.
+2. **Right-click (or Control-click)** the app icon and choose **Open** from the context menu.
+3. A confirmation dialog will appear, but it will now feature an explicit **Open** button. Click it to register a system-wide launch exception!
+4. This only needs to be done once. The application will open normally on standard double-clicks from then on.
+
+### Method 2: Remove Quarantine Attribute via Terminal
+Open Terminal and run the following command to strip the macOS quarantine attribute from the application bundle:
+```bash
+xattr -cr "/Applications/Open YouTube Music.app"
+```
+*(If the application is located in your Downloads folder, adjust the path accordingly.)*
+
+---
+
 ## ⚖ Trademark & Legal Disclaimer
 
 **Open YouTube Music** (also referred to as **OpenYTMusic** or **OpenYTM**) is an **open-source, community-driven desktop utility**. 

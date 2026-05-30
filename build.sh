@@ -89,6 +89,8 @@ else
 fi
 
 echo "🚀 Build completed successfully!"
+echo "🔒 Applying local ad-hoc code signature..."
+codesign --force --deep --sign - "$APP_BUNDLE"
 echo "📍 App Bundle Location: $APP_BUNDLE"
 echo "⭐ Launching $APP_NAME..."
 open "$APP_BUNDLE"

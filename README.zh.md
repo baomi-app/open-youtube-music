@@ -33,6 +33,27 @@
 
 ---
 
+## 🔓 macOS Gatekeeper 签名警告打不开的解决方法
+
+由于在 GitHub Releases 中分发的预编译 `.app` 安装包没有使用昂贵的 Apple 开发者账号进行证书签名，macOS Gatekeeper 安全机制可能会拦截该应用的首次打开，并弹出诸如 *“Open YouTube Music 已损坏，无法打开”* 或 *“无法验证开发者”* 的警告。
+
+您可以通过以下两种非常标准的 macOS 官方方法轻松绕过并解决此问题：
+
+### 方法一：Finder 右键绕过（最推荐，简单快捷）
+1. 在 Finder 中找到解压出来的 **Open YouTube Music** 应用（通常在 `下载` 或 `应用程序` 文件夹内）。
+2. **右键（或按住 Control 键点击）**应用图标，在弹出的右键菜单中选择 **“打开” (Open)**。
+3. 系统仍会弹出类似的 Gatekeeper 确认警告框，但此时警告框内会多出一个明确的 **“打开” (Open)** 按钮。点击它！
+4. 此操作仅需在首次启动时进行一次。从此以后，您只需正常双击即可直接流畅打开应用！
+
+### 方法二：在终端中移除 Quarantine 隔离属性（极客推荐）
+打开终端（Terminal.app），输入并运行以下命令，即可彻底剥离该应用包的 macOS 隔离标识：
+```bash
+xattr -cr "/Applications/Open YouTube Music.app"
+```
+*(如果应用目前在您的下载文件夹，请将路径相应调整为 `~/Downloads/Open\ YouTube\ Music.app`。)*
+
+---
+
 ## ⚖ 商标与法律免责声明
 
 **Open YouTube Music**（亦被称为 **OpenYTMusic** 或 **OpenYTM**）是一个**开源的、由社区驱动的免费桌面工具**。
