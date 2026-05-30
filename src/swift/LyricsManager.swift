@@ -79,8 +79,8 @@ class LyricsManager {
         
         // Remove common YouTube/YTM suffixes
         let patterns = [
-            "\\s*\\([^)]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^)]*\\)",
-            "\\s*\\[[^]]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^]]*\\]",
+            "\\s*[\\(（][^\\)）]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^\\)）]*[\\)）]",
+            "\\s*[\\[［][^\\]］]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^\\]］]*[\\]］]",
             "\\s*-\\s*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen).*",
             "\\s*-\\s*Afterwards.*" // e.g. 孙燕姿 - 日落 - Afterwards etc.
         ]
@@ -100,7 +100,11 @@ class LyricsManager {
         var cleaned = artist
         
         // Split by primary indicators
-        let separators = [" feat. ", " Feat. ", " & ", " and ", ",", "/", "、", "vs."]
+        let separators = [
+            " feat. ", " Feat. ", " & ", " and ", ",", "/", "、", "vs.",
+            " • ", " · ", " ‧ ", " - ", " | ",
+            "•", "·", "‧"
+        ]
         for separator in separators {
             if let first = cleaned.components(separatedBy: separator).first {
                 cleaned = first
