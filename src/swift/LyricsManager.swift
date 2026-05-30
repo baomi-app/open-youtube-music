@@ -65,14 +65,22 @@ class LyricsManager {
         return mutableString as String
     }
     
+    // Chinese-to-Pinyin Conversion (for robust English name matching)
+    private func toPinyin(_ string: String) -> String {
+        let mutableString = NSMutableString(string: string) as CFMutableString
+        CFStringTransform(mutableString, nil, kCFStringTransformToLatin, false)
+        CFStringTransform(mutableString, nil, kCFStringTransformStripDiacritics, false)
+        return (mutableString as String).lowercased()
+    }
+    
     // Metadata Suffix Cleanups
     private func cleanTitle(_ title: String) -> String {
         var cleaned = title
         
         // Remove common YouTube/YTM suffixes
         let patterns = [
-            "\\s*\\([^)]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen)[^)]*\\)",
-            "\\s*\\[[^]]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen)[^]]*\\]",
+            "\\s*\\([^)]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^)]*\\)",
+            "\\s*\\[[^]]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^]]*\\]",
             "\\s*-\\s*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen).*",
             "\\s*-\\s*Afterwards.*" // e.g. 孙燕姿 - 日落 - Afterwards etc.
         ]
@@ -316,15 +324,50 @@ class LyricsManager {
                         let targetLower = targetArtist.lowercased()
                         let targetTrad = self.toTraditional(targetLower)
                         let targetSimp = self.toSimplified(targetLower)
+                        let targetPinyin = self.toPinyin(targetLower)
                         
                         candidates = candidates.filter { candidate in
                             guard let candArtist = (candidate["artistName"] as? String)?.lowercased() else { return false }
-                            return candArtist.contains(targetLower) ||
-                                   candArtist.contains(targetTrad) ||
-                                   candArtist.contains(targetSimp) ||
-                                   targetLower.contains(candArtist) ||
-                                   targetTrad.contains(candArtist) ||
-                                   targetSimp.contains(candArtist)
+                            let candPinyin = self.toPinyin(candArtist)
+                            
+                            // Check direct containment
+                            if candArtist.contains(targetLower) ||
+                               candArtist.contains(targetTrad) ||
+                               candArtist.contains(targetSimp) ||
+                               targetLower.contains(candArtist) ||
+                               targetTrad.contains(candArtist) ||
+                               targetSimp.contains(candArtist) {
+                                return true
+                            }
+                            
+                            // Check Pinyin containment or overlap
+                            // e.g. target="李荣浩" (pinyin "li rong hao"), cand="Ronghao Li" (pinyin "ronghao li")
+                            let targetPinyinClean = targetPinyin.replacingOccurrences(of: " ", with: "")
+                            let candPinyinClean = candPinyin.replacingOccurrences(of: " ", with: "")
+                            if targetPinyinClean == candPinyinClean ||
+                               candPinyinClean.contains(targetPinyinClean) ||
+                               targetPinyinClean.contains(candPinyinClean) {
+                                return true
+                            }
+                            
+                            // Check word-by-word overlap for name inversions (e.g. "Ronghao Li" vs "Li Ronghao")
+                            let targetWords = targetPinyin.components(separatedBy: CharacterSet.whitespacesAndNewlines).filter { !$0.isEmpty }
+                            let candWords = candPinyin.components(separatedBy: CharacterSet.whitespacesAndNewlines).filter { !$0.isEmpty }
+                            
+                            let intersection = Set(targetWords).intersection(Set(candWords))
+                            if !intersection.isEmpty && (intersection.count >= 2 || (targetWords.count == 1 || candWords.count == 1)) {
+                                return true
+                            }
+                            
+                            // Check for combined first/last name mismatch (e.g. ["ronghao", "li"] vs ["li", "rong", "hao"])
+                            // We can check if all characters in Pinyin match after sorting or character intersection
+                            let targetChars = Set(targetPinyinClean)
+                            let candChars = Set(candPinyinClean)
+                            if targetChars == candChars && targetPinyinClean.count == candPinyinClean.count {
+                                return true
+                            }
+                            
+                            return false
                         }
                     }
                     
