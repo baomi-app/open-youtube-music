@@ -13,10 +13,7 @@ Designed for elegance, lightweight memory footprint, and perfect alignment with 
 - **Lock Screen & Media Key Integration**: Fully synchronizes track metadata (title, artist, album name, and cover artwork) with the macOS Control Center and system-wide Now Playing panel via `MPNowPlayingInfoCenter`, with full support for physical media key playback controls.
 - **Menu Bar Tray Widget**: Lightweight native tray item (`NSStatusItem`) showing the active song title and a native controls menu.
 - **Real-Time Scrolling Synced Lyrics**: Includes an Apple Music-style sliding sidebar panel and a QQ Music-style floating transparent desktop capsule overlay, featuring Chinese translation fallback retries and double-sided title verification.
-- **Seamless Single-Page App (SPA) Navigation**: Supports interactive artist and album text hyperlinks with hover slide animations that click the underlying web engine anchors, loading pages instantly without full page reloads.
 - **Fluid Timeline Scrubbing**: Direct drag-and-seek timeline progress bar that suspends playhead overrides during drags for fluid seeking.
-- **Persistent User Settings**: Automatically saves and restores your lyrics scale, sidebar toggles, and floating window visibility states across app launches using standard macOS `UserDefaults`.
-- **Built-in Ad Blocker**: Deploys declarative `WKContentRuleList` ad and tracker blocking lists natively to the WebKit core for zero CPU overhead.
 
 ---
 
