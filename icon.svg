@@ -2,10 +2,12 @@
   <!-- 1. Pure Flat White macOS Squircle Background (inset by 10px, rx=111.5 for perfect continuous curvature) -->
   <rect x="10" y="10" width="492" height="492" rx="111.5" fill="#ffffff" />
 
-  <!-- 2. Vibrant YouTube Red Circle (represents YouTube Music disc / red plate) -->
+  <!-- 2. Outer YouTube Red Circle -->
   <circle cx="256" cy="256" r="160" fill="#ff003c" />
 
-  <!-- 3. Crisp White Play Button Triangle (aligned dynamically to the center-right) -->
-  <polygon points="205,166 335,256 205,346" fill="#ffffff" />
+  <!-- 3. Concentric White Gap Ring (creates the signature double-circle / vinyl record groove of YouTube Music) -->
+  <circle cx="256" cy="256" r="110" stroke="#ffffff" stroke-width="20" fill="none" />
 
+  <!-- 4. Crisp White Play Button Triangle in the exact center -->
+  <polygon points="220,196 315,256 220,316" fill="#ffffff" />
 </svg>
