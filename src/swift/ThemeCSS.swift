@@ -99,9 +99,13 @@ struct ThemeCSS {
     #player-bar, 
     #player-bar-background,
     ytmusic-app-layout [slot="player-bar"] {
-      visibility: hidden !important;
+      position: absolute !important;
+      bottom: -200px !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 0 !important;
       opacity: 0 !important;
-      pointer-events: none !important;
+      overflow: hidden !important;
     }
 
     /* Sleek custom macOS-style scrollbars */

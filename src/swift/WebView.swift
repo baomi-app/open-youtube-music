@@ -715,7 +715,8 @@ struct WebView: NSViewRepresentable {
             (function() {
                 var playerBar = document.querySelector('ytmusic-player-bar');
                 if (playerBar) {
-                    var expandBtn = playerBar.querySelector('.expand-button') || playerBar.querySelector('#expand-button');
+                    var root = playerBar.shadowRoot || playerBar;
+                    var expandBtn = root.querySelector('.expand-button') || root.querySelector('#expand-button');
                     if (expandBtn) {
                         expandBtn.click();
                         return true;
