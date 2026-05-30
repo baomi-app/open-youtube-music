@@ -476,36 +476,56 @@ struct WebView: NSViewRepresentable {
                 var album = "";
                 var albumArt = "";
                 
-                // 1. Primary retrieval from MediaSession API (highly reliable, matches browser metadata)
-                if (navigator.mediaSession && navigator.mediaSession.metadata) {
-                    title = navigator.mediaSession.metadata.title || "";
-                    artist = navigator.mediaSession.metadata.artist || "";
-                    album = navigator.mediaSession.metadata.album || "";
-                    if (navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
-                        var artwork = navigator.mediaSession.metadata.artwork;
-                        albumArt = artwork[artwork.length - 1].src || "";
+                // 1. Primary: Extract directly from DOM elements (reflects visual Chinese text on screen)
+                var titleEl = root.querySelector('.title') || document.querySelector('ytmusic-player-bar .title');
+                var bylineEl = root.querySelector('.byline') || document.querySelector('ytmusic-player-bar .byline') || root.querySelector('.subtitle');
+                
+                if (titleEl) title = titleEl.textContent.trim();
+                
+                if (bylineEl) {
+                    // Extract strictly the artist name from the byline (first link to channel, or split by dot)
+                    var links = bylineEl.querySelectorAll('a');
+                    var artistLink = null;
+                    for (var i = 0; i < links.length; i++) {
+                        var href = links[i].getAttribute('href') || "";
+                        if (href.indexOf('channel/') !== -1 || href.indexOf('browse/UC') !== -1) {
+                            artistLink = links[i];
+                            break;
+                        }
+                    }
+                    if (artistLink) {
+                        artist = artistLink.innerText.trim();
+                    } else {
+                        var parts = bylineEl.innerText.split('•');
+                        if (parts.length > 0) {
+                            artist = parts[0].trim();
+                        }
+                    }
+                    if (!artist) {
+                        artist = bylineEl.textContent.trim();
                     }
                 }
                 
-                // 2. Secondary fallback via DOM query selector (supporting shadowRoot polymer encapsulation)
+                var albumArtImg = root.querySelector('img.image') || root.querySelector('.image') || document.querySelector('ytmusic-player-bar img.image') || root.querySelector('#thumbnail img');
+                if (albumArtImg) albumArt = albumArtImg.src;
+                
+                // 2. Secondary Fallback: If DOM is empty, fallback to MediaSession API
                 if (!title || !artist) {
-                    var titleEl = root.querySelector('.title') || document.querySelector('ytmusic-player-bar .title');
-                    var bylineEl = root.querySelector('.byline') || document.querySelector('ytmusic-player-bar .byline') || root.querySelector('.subtitle');
-                    
-                    if (titleEl) title = titleEl.textContent.trim();
-                    if (bylineEl) artist = bylineEl.textContent.trim();
-                    
-                    if (!albumArt) {
-                        var albumArtImg = root.querySelector('img.image') || root.querySelector('.image') || document.querySelector('ytmusic-player-bar img.image') || root.querySelector('#thumbnail img');
-                        if (albumArtImg) albumArt = albumArtImg.src;
+                    if (navigator.mediaSession && navigator.mediaSession.metadata) {
+                        title = navigator.mediaSession.metadata.title || "";
+                        artist = navigator.mediaSession.metadata.artist || "";
+                        album = navigator.mediaSession.metadata.album || "";
+                        if (navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
+                            var artwork = navigator.mediaSession.metadata.artwork;
+                            albumArt = artwork[artwork.length - 1].src || "";
+                        }
                     }
                 }
                 
-                // Robust triple-fallback for album
+                // 3. Robust triple-fallback for album
                 if (!album) {
                     var byline = root.querySelector('.byline') || document.querySelector('ytmusic-player-bar .byline');
                     if (byline) {
-                        // First fallback: search through links inside the byline
                         var links = byline.querySelectorAll('a');
                         for (var i = 0; i < links.length; i++) {
                             var href = links[i].getAttribute('href') || "";
@@ -514,7 +534,6 @@ struct WebView: NSViewRepresentable {
                                 break;
                             }
                         }
-                        // Second fallback: split text by dot (e.g. Artist • Album • Year)
                         if (!album) {
                             var parts = byline.innerText.split('•');
                             if (parts.length >= 2) {
@@ -522,6 +541,10 @@ struct WebView: NSViewRepresentable {
                             }
                         }
                     }
+                }
+                
+                if (!album && navigator.mediaSession && navigator.mediaSession.metadata) {
+                    album = navigator.mediaSession.metadata.album || "";
                 }
                 
                 var video = document.querySelector('video');
@@ -593,6 +616,37 @@ struct WebView: NSViewRepresentable {
         let monitorScript = WKUserScript(source: jsMonitor, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         userContentController.addUserScript(monitorScript)
         
+        let jsLangMock = """
+        (function() {
+            try {
+                var getCookieLang = function() {
+                    var match = document.cookie.match(/(?:^|; )PREF=([^;]+)/);
+                    if (match) {
+                        var pref = match[1];
+                        var hlMatch = pref.match(/hl=([^&]+)/);
+                        if (hlMatch) return hlMatch[1];
+                    }
+                    var urlMatch = window.location.search.match(/[?&]hl=([^&]+)/);
+                    if (urlMatch) return urlMatch[1];
+                    return 'zh-CN';
+                };
+                var activeLang = getCookieLang();
+                Object.defineProperty(navigator, 'language', {
+                    get: function() { return activeLang; },
+                    configurable: true
+                });
+                Object.defineProperty(navigator, 'languages', {
+                    get: function() { return [activeLang, activeLang.split('-')[0]]; },
+                    configurable: true
+                });
+            } catch (e) {
+                console.error('Failed to mock navigator.language:', e);
+            }
+        })();
+        """
+        let langScript = WKUserScript(source: jsLangMock, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        userContentController.addUserScript(langScript)
+        
         config.userContentController = userContentController
         
         // 5. Instantiate WebKit View
@@ -608,9 +662,37 @@ struct WebView: NSViewRepresentable {
         
         WebView.sharedWebView = webView
         
-        // Load initial page
-        let request = URLRequest(url: url)
-        webView.load(request)
+        // Determine initial language code dynamically
+        let langCode = getActiveLanguageCode()
+        
+        // Register observer for dynamic language changes
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("LanguageChanged"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            let newLang = getActiveLanguageCode()
+            applyLanguageCookie(to: webView, langCode: newLang) {
+                DispatchQueue.main.async {
+                    if let newUrl = URL(string: "https://music.youtube.com/?hl=\(newLang)") {
+                        var req = URLRequest(url: newUrl)
+                        req.setValue("\(newLang),zh;q=0.9,en-US;q=0.8,en;q=0.7", forHTTPHeaderField: "Accept-Language")
+                        webView.load(req)
+                    }
+                }
+            }
+        }
+        
+        // Load initial page after configuring language cookie to ensure flawless first-frame rendering
+        applyLanguageCookie(to: webView, langCode: langCode) {
+            DispatchQueue.main.async {
+                if let localizedUrl = URL(string: "https://music.youtube.com/?hl=\(langCode)") {
+                    var request = URLRequest(url: localizedUrl)
+                    request.setValue("\(langCode),zh;q=0.9,en-US;q=0.8,en;q=0.7", forHTTPHeaderField: "Accept-Language")
+                    webView.load(request)
+                }
+            }
+        }
         
         // Register observer for commands from tray/keys
         NotificationCenter.default.addObserver(
@@ -881,6 +963,63 @@ struct WebView: NSViewRepresentable {
                 }
             }
             decisionHandler(.allow)
+        }
+    }
+}
+
+fileprivate func getActiveLanguageCode() -> String {
+    let saved = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+    if saved == "auto" {
+        let systemLang = Locale.preferredLanguages.first ?? "zh-CN"
+        return systemLang.hasPrefix("zh") ? "zh-CN" : "en"
+    }
+    return saved
+}
+
+fileprivate func applyLanguageCookie(to webView: WKWebView, langCode: String, completion: @escaping () -> Void) {
+    let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+    cookieStore.getAllCookies { cookies in
+        var prefValue = "hl=\(langCode)"
+        if let prefCookie = cookies.first(where: { $0.name == "PREF" }) {
+            var dict: [String: String] = [:]
+            let parts = prefCookie.value.split(separator: "&")
+            for part in parts {
+                let kv = part.split(separator: "=")
+                if kv.count == 2 {
+                    dict[String(kv[0])] = String(kv[1])
+                }
+            }
+            dict["hl"] = langCode
+            prefValue = dict.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+        }
+        
+        let domains = [".youtube.com", ".music.youtube.com", "music.youtube.com"]
+        let group = DispatchGroup()
+        
+        for domain in domains {
+            group.enter()
+            let cookieProperties: [HTTPCookiePropertyKey: Any] = [
+                .name: "PREF",
+                .value: prefValue,
+                .domain: domain,
+                .path: "/",
+                .expires: Date(timeIntervalSinceNow: 31536000) // 1 year
+            ]
+            
+            if let newCookie = HTTPCookie(properties: cookieProperties) {
+                DispatchQueue.main.async {
+                    cookieStore.setCookie(newCookie) {
+                        print("✓ Cookie PREF set to \(prefValue) on \(domain)")
+                        group.leave()
+                    }
+                }
+            } else {
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            completion()
         }
     }
 }

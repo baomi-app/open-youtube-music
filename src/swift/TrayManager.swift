@@ -109,6 +109,30 @@ class TrayManager: NSObject {
         showWindowItem.target = self
         menu.addItem(showWindowItem)
         
+        // 6b. Language (语言) - Nested Submenu
+        let languageItem = NSMenuItem(title: "Language (语言)", action: nil, keyEquivalent: "")
+        let langSubMenu = NSMenu()
+        
+        let currentLang = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+        
+        let autoLangItem = NSMenuItem(title: "Auto (自适应)", action: #selector(menuSetLanguageAuto), keyEquivalent: "")
+        autoLangItem.target = self
+        autoLangItem.state = currentLang == "auto" ? .on : .off
+        langSubMenu.addItem(autoLangItem)
+        
+        let zhLangItem = NSMenuItem(title: "简体中文 (Chinese)", action: #selector(menuSetLanguageZh), keyEquivalent: "")
+        zhLangItem.target = self
+        zhLangItem.state = currentLang == "zh-CN" ? .on : .off
+        langSubMenu.addItem(zhLangItem)
+        
+        let enLangItem = NSMenuItem(title: "English (English)", action: #selector(menuSetLanguageEn), keyEquivalent: "")
+        enLangItem.target = self
+        enLangItem.state = currentLang == "en" ? .on : .off
+        langSubMenu.addItem(enLangItem)
+        
+        languageItem.submenu = langSubMenu
+        menu.addItem(languageItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // 7. Quit App
@@ -175,6 +199,24 @@ class TrayManager: NSObject {
     
     @objc private func menuQuit() {
         NSApplication.shared.terminate(nil)
+    }
+    
+    @objc private func menuSetLanguageAuto() {
+        UserDefaults.standard.set("auto", forKey: "appLanguage")
+        NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        setupMenu()
+    }
+    
+    @objc private func menuSetLanguageZh() {
+        UserDefaults.standard.set("zh-CN", forKey: "appLanguage")
+        NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        setupMenu()
+    }
+    
+    @objc private func menuSetLanguageEn() {
+        UserDefaults.standard.set("en", forKey: "appLanguage")
+        NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        setupMenu()
     }
     
     private func createTrayIcon() -> NSImage {

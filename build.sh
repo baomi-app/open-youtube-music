@@ -64,6 +64,14 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
     <string>13.0</string>
     <key>LSUIElement</key>
     <false/> <!-- Set to true if you want status-bar ONLY without Dock icon -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh-CN</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>zh-CN</string>
+        <string>zh</string>
+        <string>en</string>
+    </array>
 </dict>
 </plist>
 EOF
