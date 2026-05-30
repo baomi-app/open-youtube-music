@@ -4,6 +4,16 @@ A premium, high-performance native macOS desktop client for YouTube Music, built
 
 Designed for elegance, lightweight memory footprint, and perfect alignment with macOS desktop aesthetics.
 
+## 📸 Screenshots & Premium Interface
+
+<p align="center">
+  <img src="promo_screenshot.png" width="900" alt="Open YouTube Music Desktop Overview">
+</p>
+
+| Normal Playback Mode | Frost Glass Mini Player | Floating Desktop Lyrics |
+| :-: | :-: | :-: |
+| <img src="promo_normal_playback.png" width="280" alt="Normal Playback"> | <img src="promo_mini_player.png" width="280" alt="Mini Player"> | <img src="promo_desktop_lyrics.png" width="280" alt="Desktop Lyrics"> |
+
 ---
 
 ## 🎨 Key Features

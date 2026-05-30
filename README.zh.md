@@ -4,6 +4,16 @@
 
 旨在提供极致轻量的内存占用、出色的系统融合度以及 macOS 独有的原生桌面美学。
 
+## 📸 界面预览与美学设计
+
+<p align="center">
+  <img src="promo_screenshot.png" width="900" alt="Open YouTube Music 桌面大合照">
+</p>
+
+| 正常播放模式 | 磨砂玻璃 Mini 播放器 | 桌面悬浮歌词秀 |
+| :-: | :-: | :-: |
+| <img src="promo_normal_playback.png" width="280" alt="正常播放页"> | <img src="promo_mini_player.png" width="280" alt="Mini 播放器"> | <img src="promo_desktop_lyrics.png" width="280" alt="桌面悬浮歌词"> |
+
 ---
 
 ## 🎨 核心特性
