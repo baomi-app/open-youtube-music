@@ -613,7 +613,7 @@ struct WebView: NSViewRepresentable {
         document.addEventListener('mousedown', function(e) {
             var navBar = document.querySelector('ytmusic-nav-bar');
             if (navBar && navBar.contains(e.target)) {
-                var interactive = e.target.closest('button, input, a, [role="button"], #search-box, .search-container, ytmusic-search-box');
+                var interactive = e.target.closest('button, input, a, [role="button"], [role="option"], yt-icon, iron-icon, paper-item, ytmusic-search-suggestion-renderer');
                 if (!interactive) {
                     window.webkit.messageHandlers.YTMBridge.postMessage({
                         event: "dragWindow"
@@ -622,7 +622,7 @@ struct WebView: NSViewRepresentable {
             }
         });
 
-        // Intercept double-clicks anywhere in the viewport to toggle/exit Mini Player mode
+        // Intercept double-clicks anywhere in the viewport
         document.addEventListener('dblclick', function(e) {
             if (document.documentElement.classList.contains('mini-player-active')) {
                 e.preventDefault();
@@ -630,6 +630,20 @@ struct WebView: NSViewRepresentable {
                 window.webkit.messageHandlers.YTMBridge.postMessage({
                     event: "toggleMiniPlayer"
                 });
+                return;
+            }
+
+            // In normal mode, check if double-click is on the title bar (navigation bar)
+            var navBar = document.querySelector('ytmusic-nav-bar');
+            if (navBar && navBar.contains(e.target)) {
+                var interactive = e.target.closest('button, input, a, [role="button"], [role="option"], yt-icon, iron-icon, paper-item, ytmusic-search-suggestion-renderer');
+                if (!interactive) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.webkit.messageHandlers.YTMBridge.postMessage({
+                        event: "doubleClickHeader"
+                    });
+                }
             }
         });
 
@@ -1037,6 +1051,20 @@ struct WebView: NSViewRepresentable {
                         if let window = message.webView?.window,
                            let currentEvent = NSApplication.shared.currentEvent {
                             window.performDrag(with: currentEvent)
+                        }
+                    }
+                } else if event == "doubleClickHeader" {
+                    DispatchQueue.main.async {
+                        if let window = message.webView?.window {
+                            // Respect macOS system settings for double-clicking the title bar
+                            let globalDomain = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)
+                            let action = globalDomain?["AppleActionOnDoubleClick"] as? String ?? "Maximize"
+                            
+                            if action == "Minimize" {
+                                window.performMiniaturize(nil)
+                            } else if action == "Maximize" || action == "Zoom" {
+                                window.zoom(nil)
+                            }
                         }
                     }
                 } else if event == "toggleDesktopLyrics" {

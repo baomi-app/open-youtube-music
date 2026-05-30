@@ -7,6 +7,50 @@ struct ThemeCSS {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
     }
 
+    /* Disable text selection globally to prevent accidental highlighting, making it feel like a premium native macOS app */
+    * {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    input, textarea, [contenteditable="true"], ytmusic-search-box, ytd-searchbox, [role="textbox"], input *, textarea * {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+    }
+
+    /* Hide search suggestions container completely when the search box is not opened to prevent ugly border/shadow leak */
+    ytmusic-search-box:not([opened]) #suggestions,
+    ytmusic-search-box:not([opened]) .suggestions,
+    ytmusic-search-box:not([opened]) #suggestions-wrapper,
+    ytmusic-search-box:not([opened]) paper-material {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      height: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Premium Glassmorphic Search Suggestions Panel when opened/focused */
+    ytmusic-search-box[opened] #suggestions,
+    ytmusic-search-box[opened] .suggestions,
+    ytmusic-search-box[opened] #suggestions-wrapper,
+    ytmusic-search-box[opened] paper-material {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      background: rgba(22, 22, 22, 0.82) !important;
+      backdrop-filter: blur(35px) !important;
+      -webkit-backdrop-filter: blur(35px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 12px !important;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
+      margin-top: 6px !important;
+      padding: 8px 0 !important;
+    }
+
+
+
+
     /* Disable WebKit elastic scroll / rubber-banding globally on html and body */
     html, body {
       overscroll-behavior: none !important;

@@ -139,6 +139,63 @@ class LyricsManager {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // Split bilingual titles (e.g. "爱情的重量 - The Weight of Love" -> ["爱情的重量", "The Weight of Love"])
+    private func splitBilingualTitle(_ title: String) -> [String] {
+        var parts: [String] = []
+        let separators = [" - ", " / ", " | ", " — "]
+        for separator in separators {
+            if title.contains(separator) {
+                let segments = title.components(separatedBy: separator)
+                for seg in segments {
+                    let trimmed = seg.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        parts.append(trimmed)
+                    }
+                }
+                break
+            }
+        }
+        return parts
+    }
+    
+    private func tryBilingualParts(parts: [String], index: Int, artist: String, cleanedArtist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        guard index < parts.count else {
+            // All bilingual parts failed. Fallback to iTunes translation on the original cleaned title!
+            print("🔍 All bilingual parts failed. Falling back to iTunes translation on original title...")
+            let cleanOrigTitle = cleanTitle(parts.joined(separator: " - "))
+            self.runWaterfallAndITunesTranslation(title: cleanOrigTitle, artist: cleanedArtist, duration: duration, completion: completion)
+            return
+        }
+        
+        let partTitle = parts[index]
+        print("🔍 Trying bilingual Part \(index + 1)/\(parts.count): Title='\(partTitle)', Artist='\(artist)'")
+        
+        self.tryPreciseGet(title: partTitle, artist: artist, duration: duration) { [weak self] lines, mTitle, mArtist in
+            if let lines = lines {
+                completion(lines, mTitle, mArtist)
+                return
+            }
+            
+            guard let self = self else { completion(nil, nil, nil); return }
+            
+            self.tryPreciseGet(title: partTitle, artist: cleanedArtist, duration: duration) { lines, mTitle, mArtist in
+                if let lines = lines {
+                    completion(lines, mTitle, mArtist)
+                    return
+                }
+                
+                self.tryTraditionalAndSimplifiedWaterfall(title: partTitle, artist: cleanedArtist, duration: duration) { lines, mTitle, mArtist in
+                    if let lines = lines {
+                        completion(lines, mTitle, mArtist)
+                        return
+                    }
+                    
+                    self.tryBilingualParts(parts: parts, index: index + 1, artist: artist, cleanedArtist: cleanedArtist, duration: duration, completion: completion)
+                }
+            }
+        }
+    }
+
     // Fetch synced lyrics from LrcLib with resilient waterfall search and dynamic translation
     func fetchSyncedLyrics(title: String, artist: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         guard !title.isEmpty else {
@@ -151,6 +208,14 @@ class LyricsManager {
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
 
         print("🔍 Syncing lyrics waterfall started: Title='\(title)' -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
+
+        // Split bilingual titles (e.g. "爱情的重量 - The Weight of Love")
+        let titleParts = splitBilingualTitle(cleanedTitle)
+        if !titleParts.isEmpty {
+            print("💡 Detected bilingual title, split into: \(titleParts)")
+            self.tryBilingualParts(parts: titleParts, index: 0, artist: artist, cleanedArtist: cleanedArtist, duration: durationSec, completion: completion)
+            return
+        }
 
         // Step 1: Try precise GET with original metadata
         tryPreciseGet(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
@@ -176,6 +241,7 @@ class LyricsManager {
         }
     }
 
+
     private func runWaterfallAndITunesTranslation(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         self.tryTraditionalAndSimplifiedWaterfall(title: title, artist: artist, duration: duration) { [weak self] lines, mTitle, mArtist in
             if let lines = lines {
@@ -189,26 +255,44 @@ class LyricsManager {
             
             self.tryITunesTranslation(title: title, artist: artist) { resolvedTitle, resolvedArtist in
                 guard let resolvedTitle = resolvedTitle, !resolvedTitle.isEmpty,
-                      resolvedTitle.lowercased() != title.lowercased() else {
-                    print("✗ iTunes translation found no alternative title.")
+                      resolvedTitle.lowercased() != title.lowercased() || (resolvedArtist != nil && resolvedArtist!.lowercased() != artist.lowercased()) else {
+                    print("✗ iTunes translation found no alternative title or artist.")
                     completion(nil, nil, nil)
                     return
                 }
                 
-                print("✓ iTunes translation resolved: '\(title)' -> '\(resolvedTitle)' by '\(resolvedArtist ?? artist)'")
+                print("✓ iTunes translation resolved: '\(title)' by '\(artist)' -> '\(resolvedTitle)' by '\(resolvedArtist ?? artist)'")
                 
-                // Trigger a secondary clean search with the translated title!
                 let cleanResolvedTitle = self.cleanTitle(resolvedTitle)
                 let cleanResolvedArtist = self.cleanArtist(resolvedArtist ?? artist)
+                let cleanOriginalTitle = self.cleanTitle(title)
                 
-                print("🔍 Triggering secondary waterfall with translated metadata: Title='\(cleanResolvedTitle)', Artist='\(cleanResolvedArtist)'")
-                self.tryPreciseGet(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration) { lines, mTitle, mArtist in
+                // Trigger secondary waterfall searches!
+                // Option A: Clean original title + Clean resolved artist (e.g. "愛了" by "Julia Peng")
+                print("🔍 Triggering secondary waterfall Option A (Original title + Resolved artist): Title='\(cleanOriginalTitle)', Artist='\(cleanResolvedArtist)'")
+                self.tryPreciseGet(title: cleanOriginalTitle, artist: cleanResolvedArtist, duration: duration) { lines, mTitle, mArtist in
                     if let lines = lines {
                         completion(lines, mTitle, mArtist)
                         return
                     }
                     
-                    self.tryTraditionalAndSimplifiedWaterfall(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration, completion: completion)
+                    self.tryTraditionalAndSimplifiedWaterfall(title: cleanOriginalTitle, artist: cleanResolvedArtist, duration: duration) { lines, mTitle, mArtist in
+                        if let lines = lines {
+                            completion(lines, mTitle, mArtist)
+                            return
+                        }
+                        
+                        // Option B: Clean resolved title + Clean resolved artist (e.g. "Love it" by "Julia Peng")
+                        print("🔍 Triggering secondary waterfall Option B (Resolved title + Resolved artist): Title='\(cleanResolvedTitle)', Artist='\(cleanResolvedArtist)'")
+                        self.tryPreciseGet(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration) { lines, mTitle, mArtist in
+                            if let lines = lines {
+                                completion(lines, mTitle, mArtist)
+                                return
+                            }
+                            
+                            self.tryTraditionalAndSimplifiedWaterfall(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration, completion: completion)
+                        }
+                    }
                 }
             }
         }
@@ -542,6 +626,50 @@ class LyricsManager {
                             
                             return false
                         }
+                    } else if !targetArtist.isEmpty {
+                        // Loose Artist Check: Prevent matching completely unrelated artists (e.g. "The Black Keys" vs "Maggie Chiang")
+                        let targetLower = targetArtist.lowercased()
+                        let targetTrad = self.toTraditional(targetLower)
+                        let targetSimp = self.toSimplified(targetLower)
+                        
+                        candidates = candidates.filter { candidate in
+                            guard let candArtist = (candidate["artistName"] as? String)?.lowercased(), !candArtist.isEmpty else {
+                                return true // Allow empty candidate artist as last resort
+                            }
+                            
+                            // 1. Direct containment (case-insensitive)
+                            if candArtist.contains(targetLower) ||
+                               candArtist.contains(targetTrad) ||
+                               candArtist.contains(targetSimp) ||
+                               targetLower.contains(candArtist) ||
+                               targetTrad.contains(candArtist) ||
+                               targetSimp.contains(candArtist) {
+                                return true
+                            }
+                            
+                            // 2. Chinese character intersection (if any Chinese characters exist)
+                            let targetChinese = targetLower.filter { $0.isChinese }
+                            let candChinese = candArtist.filter { $0.isChinese }
+                            if !targetChinese.isEmpty && !candChinese.isEmpty {
+                                let intersection = Set(targetChinese).intersection(Set(candChinese))
+                                if !intersection.isEmpty {
+                                    return true
+                                }
+                            }
+                            
+                            // 3. English word intersection (for names, excluding common stop words)
+                            let targetWords = targetLower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                                .filter { $0.count >= 2 && $0 != "the" && $0 != "and" && $0 != "feat" && $0 != "ft" }
+                            let candWords = candArtist.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                                .filter { $0.count >= 2 && $0 != "the" && $0 != "and" && $0 != "feat" && $0 != "ft" }
+                            
+                            let intersection = Set(targetWords).intersection(Set(candWords))
+                            if !intersection.isEmpty {
+                                return true
+                            }
+                            
+                            return false
+                        }
                     }
                     
                     // Filter candidates by track name if strictTitleCheck is enabled
@@ -592,3 +720,11 @@ class LyricsManager {
         }.resume()
     }
 }
+
+extension Character {
+    var isChinese: Bool {
+        guard let scalar = unicodeScalars.first else { return false }
+        return scalar.value >= 0x4E00 && scalar.value <= 0x9FFF
+    }
+}
+

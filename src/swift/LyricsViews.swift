@@ -15,12 +15,12 @@ struct SidebarLyricsView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Lyrics")
+                    Text(state.loc("Lyrics"))
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                     if !state.matchedTitle.isEmpty {
-                        Text("Matched: \(state.matchedTitle) - \(state.matchedArtist)")
+                        Text("\(state.loc("Matched: "))\(state.matchedTitle) - \(state.matchedArtist)")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.4))
                             .lineLimit(1)
@@ -59,7 +59,7 @@ struct SidebarLyricsView: View {
             if showSearchBar {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        TextField("Search song, artist, alias...", text: $searchQuery)
+                        TextField(state.loc("Search song, artist, alias..."), text: $searchQuery)
                             .textFieldStyle(PlainTextFieldStyle())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -74,7 +74,7 @@ struct SidebarLyricsView: View {
                         Button(action: {
                             state.triggerSearchList(query: searchQuery)
                         }) {
-                            Text("Search")
+                            Text(state.loc("Search"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 10)
@@ -96,7 +96,7 @@ struct SidebarLyricsView: View {
             if !state.searchResults.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Search Results (\(state.searchResults.count))")
+                        Text("\(state.loc("Search Results ("))\(state.searchResults.count))")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.5))
                         Spacer()
@@ -105,7 +105,7 @@ struct SidebarLyricsView: View {
                                 state.searchResults = []
                             }
                         }) {
-                            Text("Clear")
+                            Text(state.loc("Clear"))
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.red.opacity(0.8))
                         }
@@ -173,7 +173,7 @@ struct SidebarLyricsView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(1.2)
                             .padding(.bottom, 12)
-                        Text("正在获取歌词...")
+                        Text(state.loc("正在获取歌词..."))
                             .font(.body)
                             .foregroundColor(.white.opacity(0.6))
                     } else {
@@ -181,20 +181,20 @@ struct SidebarLyricsView: View {
                             .font(.system(size: 40))
                             .foregroundColor(.white.opacity(0.2))
                             .padding(.bottom, 12)
-                        Text("暂无同步歌词")
+                        Text(state.loc("暂无同步歌词"))
                             .font(.body)
                             .foregroundColor(.white.opacity(0.4))
                             .padding(.bottom, 24)
                         
                         VStack(spacing: 12) {
-                            Text("手动搜索歌词")
+                            Text(state.loc("手动搜索歌词"))
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             
                             HStack(spacing: 8) {
-                                TextField("搜索歌名、歌手...", text: $searchQuery)
+                                TextField(state.loc("Search song, artist, alias..."), text: $searchQuery)
                                     .textFieldStyle(PlainTextFieldStyle())
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 8)
@@ -268,10 +268,10 @@ struct SidebarLyricsView: View {
         )
         .transition(.move(edge: .trailing))
         .contextMenu {
-            Section("Lyrics Font Size") {
+            Section(state.loc("Lyrics Font Size")) {
                 Button(action: { state.lyricsScale = 0.8 }) {
                     HStack {
-                        Text("Small (80%)")
+                        Text(state.loc("Small (80%)"))
                         if state.lyricsScale == 0.8 {
                             Image(systemName: "checkmark")
                         }
@@ -279,7 +279,7 @@ struct SidebarLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.0 }) {
                     HStack {
-                        Text("Normal (100%)")
+                        Text(state.loc("Normal (100%)"))
                         if state.lyricsScale == 1.0 {
                             Image(systemName: "checkmark")
                         }
@@ -287,7 +287,7 @@ struct SidebarLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.2 }) {
                     HStack {
-                        Text("Large (120%)")
+                        Text(state.loc("Large (120%)"))
                         if state.lyricsScale == 1.2 {
                             Image(systemName: "checkmark")
                         }
@@ -295,7 +295,7 @@ struct SidebarLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.5 }) {
                     HStack {
-                        Text("Extra Large (150%)")
+                        Text(state.loc("Extra Large (150%)"))
                         if state.lyricsScale == 1.5 {
                             Image(systemName: "checkmark")
                         }
@@ -303,7 +303,7 @@ struct SidebarLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.8 }) {
                     HStack {
-                        Text("Huge (180%)")
+                        Text(state.loc("Huge (180%)"))
                         if state.lyricsScale == 1.8 {
                             Image(systemName: "checkmark")
                         }
@@ -311,16 +311,16 @@ struct SidebarLyricsView: View {
                 }
             }
             
-            Section("Lyrics Sync Offset") {
+            Section(state.loc("Lyrics Sync Offset")) {
                 Button(action: { state.lyricsOffset += 0.5 }) {
-                    Text("Delay Lyrics (+0.5s)")
+                    Text(state.loc("Delay Lyrics (+0.5s)"))
                 }
                 Button(action: { state.lyricsOffset -= 0.5 }) {
-                    Text("Advance Lyrics (-0.5s)")
+                    Text(state.loc("Advance Lyrics (-0.5s)"))
                 }
                 if state.lyricsOffset != 0.0 {
                     Button(action: { state.lyricsOffset = 0.0 }) {
-                        Text("Reset (Current: \(String(format: "%.1fs", state.lyricsOffset)))")
+                        Text("\(state.loc("Reset")) (\(String(format: "%.1fs", state.lyricsOffset)))")
                     }
                 }
             }
@@ -371,7 +371,7 @@ struct DesktopLyricsView: View {
         VStack(spacing: 10) {
             if state.lyricLines.isEmpty {
                 // Explicitly show search/not found status for lyrics
-                let statusText = state.lyricsLoading ? "🎵 正在获取歌词..." : "🎵 暂无同步歌词"
+                let statusText = state.lyricsLoading ? "🎵 " + state.loc("正在获取歌词...") : "🎵 " + state.loc("暂无同步歌词")
                 Text(statusText)
                     .font(.system(size: CGFloat(20 * state.lyricsScale), weight: .bold))
                     .foregroundColor(.white.opacity(0.7))
@@ -442,10 +442,10 @@ struct DesktopLyricsView: View {
             }
         }
         .contextMenu {
-            Section("Lyrics Font Size") {
+            Section(state.loc("Lyrics Font Size")) {
                 Button(action: { state.lyricsScale = 0.8 }) {
                     HStack {
-                        Text("Small (80%)")
+                        Text(state.loc("Small (80%)"))
                         if state.lyricsScale == 0.8 {
                             Image(systemName: "checkmark")
                         }
@@ -453,7 +453,7 @@ struct DesktopLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.0 }) {
                     HStack {
-                        Text("Normal (100%)")
+                        Text(state.loc("Normal (100%)"))
                         if state.lyricsScale == 1.0 {
                             Image(systemName: "checkmark")
                         }
@@ -461,7 +461,7 @@ struct DesktopLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.2 }) {
                     HStack {
-                        Text("Large (120%)")
+                        Text(state.loc("Large (120%)"))
                         if state.lyricsScale == 1.2 {
                             Image(systemName: "checkmark")
                         }
@@ -469,7 +469,7 @@ struct DesktopLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.5 }) {
                     HStack {
-                        Text("Extra Large (150%)")
+                        Text(state.loc("Extra Large (150%)"))
                         if state.lyricsScale == 1.5 {
                             Image(systemName: "checkmark")
                         }
@@ -477,7 +477,7 @@ struct DesktopLyricsView: View {
                 }
                 Button(action: { state.lyricsScale = 1.8 }) {
                     HStack {
-                        Text("Huge (180%)")
+                        Text(state.loc("Huge (180%)"))
                         if state.lyricsScale == 1.8 {
                             Image(systemName: "checkmark")
                         }
@@ -740,7 +740,7 @@ struct NativeMiniPlayerView: View {
                                 .foregroundColor(showLyricsInMini ? .red : .white.opacity(0.6))
                         }
                         .buttonStyle(.plain)
-                        .help(showLyricsInMini ? "Show Album Cover" : "Show Lyrics")
+                        .help(showLyricsInMini ? state.loc("Show Album Cover") : state.loc("Show Lyrics"))
                         
                         Button(action: {
                             NotificationCenter.default.post(name: NSNotification.Name("ToggleMiniPlayer"), object: nil)
@@ -750,7 +750,7 @@ struct NativeMiniPlayerView: View {
                                 .foregroundColor(.white.opacity(0.6))
                         }
                         .buttonStyle(.plain)
-                        .help("Exit Mini Player")
+                        .help(state.loc("Exit Mini Player"))
                     }
                 }
                 .padding(.horizontal, 14)
@@ -761,7 +761,7 @@ struct NativeMiniPlayerView: View {
                     VStack(spacing: 0) {
                         if state.lyricLines.isEmpty {
                             Spacer()
-                            Text(state.lyricsLoading ? "正在获取歌词..." : "暂无歌词")
+                            Text(state.lyricsLoading ? state.loc("正在获取歌词...") : state.loc("暂无歌词"))
                                 .font(.system(size: 13))
                                 .foregroundColor(.white.opacity(0.4))
                                 .multilineTextAlignment(.center)

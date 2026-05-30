@@ -5,6 +5,8 @@ import SwiftUI
 class AppState: ObservableObject {
     static let shared = AppState()
     
+    @Published var appLanguage: String = "auto"
+    
     @Published var isMiniPlayer = false
     @Published var isTransitioning = false
     
@@ -50,6 +52,81 @@ class AppState: ObservableObject {
         self.showSidebarLyrics = savedSidebar
         self.showDesktopLyrics = savedDesktop
         self.lyricsScale = savedScale > 0 ? savedScale : 1.0
+        self.appLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+    }
+    
+    func updateLanguage() {
+        DispatchQueue.main.async {
+            self.appLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+        }
+    }
+    
+    func getActiveLanguageCode() -> String {
+        let saved = self.appLanguage
+        if saved == "auto" {
+            let systemLang = Locale.preferredLanguages.first ?? "zh-CN"
+            return systemLang.hasPrefix("zh") ? "zh-CN" : "en"
+        }
+        return saved
+    }
+    
+    func loc(_ key: String) -> String {
+        let lang = getActiveLanguageCode()
+        let isZh = lang.hasPrefix("zh")
+        
+        switch key {
+        case "Not Playing": return isZh ? "未在播放" : "Not Playing"
+        case "Now Playing: ": return isZh ? "正在播放：" : "Now Playing: "
+        case "by ": return isZh ? "歌手：" : "by "
+        case "Play": return isZh ? "播放" : "Play"
+        case "Pause": return isZh ? "暂停" : "Pause"
+        case "Next Track": return isZh ? "下一首" : "Next Track"
+        case "Previous Track": return isZh ? "上一首" : "Previous Track"
+        case "Toggle Mini Player": return isZh ? "切换迷你播放器" : "Toggle Mini Player"
+        case "Show Sidebar Lyrics": return isZh ? "显示侧边栏歌词" : "Show Sidebar Lyrics"
+        case "Hide Sidebar Lyrics": return isZh ? "隐藏侧边栏歌词" : "Hide Sidebar Lyrics"
+        case "Show Desktop Lyrics": return isZh ? "显示桌面歌词" : "Show Desktop Lyrics"
+        case "Hide Desktop Lyrics": return isZh ? "隐藏桌面歌词" : "Hide Desktop Lyrics"
+        case "Show Player": return isZh ? "显示主界面" : "Show Player"
+        case "Language (语言)": return isZh ? "界面语言" : "Language"
+        case "Auto (自适应)": return isZh ? "系统默认" : "Auto (System)"
+        case "简体中文 (Chinese)": return isZh ? "简体中文" : "Chinese"
+        case "English (English)": return isZh ? "English" : "English"
+        case "Quit": return isZh ? "退出" : "Quit"
+        
+        case "Lyrics": return isZh ? "歌词" : "Lyrics"
+        case "Matched: ": return isZh ? "已匹配：" : "Matched: "
+        case "Search": return isZh ? "搜索" : "Search"
+        case "Clear": return isZh ? "清除" : "Clear"
+        case "正在获取歌词...": return isZh ? "正在获取歌词..." : "Fetching lyrics..."
+        case "暂无同步歌词": return isZh ? "暂无同步歌词" : "No synced lyrics"
+        case "暂无歌词": return isZh ? "暂无歌词" : "No lyrics"
+        case "手动搜索歌词": return isZh ? "手动搜索歌词" : "Manual Search"
+        case "Delay Lyrics (+0.5s)": return isZh ? "歌词延后 (+0.5秒)" : "Delay Lyrics (+0.5s)"
+        case "Advance Lyrics (-0.5s)": return isZh ? "歌词提前 (-0.5秒)" : "Advance Lyrics (-0.5s)"
+        case "Reset": return isZh ? "重置" : "Reset"
+        case "Search Results (": return isZh ? "搜索结果 (" : "Search Results ("
+        
+        case "Small (80%)": return isZh ? "较小 (80%)" : "Small (80%)"
+        case "Normal (100%)": return isZh ? "标准 (100%)" : "Normal (100%)"
+        case "Large (120%)": return isZh ? "较大 (120%)" : "Large (120%)"
+        case "Extra Large (150%)": return isZh ? "超大 (150%)" : "Extra Large (150%)"
+        case "Huge (180%)": return isZh ? "巨大 (180%)" : "Huge (180%)"
+        
+        case "Searching...": return isZh ? "正在搜索..." : "Searching..."
+        case "No results": return isZh ? "无结果" : "No results"
+        case "Search failed": return isZh ? "搜索失败" : "Search failed"
+        case "Network error": return isZh ? "网络错误" : "Network error"
+        
+        case "Search song, artist, alias...": return isZh ? "搜索歌名、歌手、别名..." : "Search song, artist, alias..."
+        case "Show Album Cover": return isZh ? "显示专辑封面" : "Show Album Cover"
+        case "Show Lyrics": return isZh ? "显示歌词" : "Show Lyrics"
+        case "Exit Mini Player": return isZh ? "退出迷你播放器" : "Exit Mini Player"
+        case "Lyrics Font Size": return isZh ? "歌词字体大小" : "Lyrics Font Size"
+        case "Lyrics Sync Offset": return isZh ? "歌词同步微调" : "Lyrics Sync Offset"
+        
+        default: return key
+        }
     }
     
     // Custom search function to be triggered manually

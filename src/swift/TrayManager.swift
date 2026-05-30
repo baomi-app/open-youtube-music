@@ -30,14 +30,17 @@ class TrayManager: NSObject {
     
     private func setupMenu() {
         let menu = NSMenu()
+        let state = AppState.shared
         
         // 1. Now Playing label
-        let nowPlayingItem = NSMenuItem(title: currentTrackTitle.isEmpty ? "Not Playing" : "Now Playing: \(currentTrackTitle)", action: nil, keyEquivalent: "")
+        let titleLabel = state.loc(currentTrackTitle.isEmpty ? "Not Playing" : "Now Playing: ") + (currentTrackTitle.isEmpty ? "" : currentTrackTitle)
+        let nowPlayingItem = NSMenuItem(title: titleLabel, action: nil, keyEquivalent: "")
         nowPlayingItem.isEnabled = false
         menu.addItem(nowPlayingItem)
         
         if !currentTrackArtist.isEmpty {
-            let artistItem = NSMenuItem(title: "by \(currentTrackArtist)", action: nil, keyEquivalent: "")
+            let artistLabel = state.loc("by ") + currentTrackArtist
+            let artistItem = NSMenuItem(title: artistLabel, action: nil, keyEquivalent: "")
             artistItem.isEnabled = false
             menu.addItem(artistItem)
         }
@@ -46,7 +49,7 @@ class TrayManager: NSObject {
         
         // 2. Play / Pause Control
         let playPauseItem = NSMenuItem(
-            title: isPlaying ? "Pause" : "Play",
+            title: isPlaying ? state.loc("Pause") : state.loc("Play"),
             action: #selector(menuPlayPause),
             keyEquivalent: "p"
         )
@@ -55,7 +58,7 @@ class TrayManager: NSObject {
         
         // 3. Next Track
         let nextItem = NSMenuItem(
-            title: "Next Track",
+            title: state.loc("Next Track"),
             action: #selector(menuNext),
             keyEquivalent: "]"
         )
@@ -64,7 +67,7 @@ class TrayManager: NSObject {
         
         // 4. Previous Track
         let prevItem = NSMenuItem(
-            title: "Previous Track",
+            title: state.loc("Previous Track"),
             action: #selector(menuPrev),
             keyEquivalent: "["
         )
@@ -75,7 +78,7 @@ class TrayManager: NSObject {
         
         // 5. Toggle Mini Player
         let miniPlayerItem = NSMenuItem(
-            title: "Toggle Mini Player",
+            title: state.loc("Toggle Mini Player"),
             action: #selector(menuToggleMiniPlayer),
             keyEquivalent: "m"
         )
@@ -84,7 +87,7 @@ class TrayManager: NSObject {
         
         // 5b. Toggle App Sidebar Lyrics
         let sidebarLyricsItem = NSMenuItem(
-            title: AppState.shared.showSidebarLyrics ? "Hide Sidebar Lyrics" : "Show Sidebar Lyrics",
+            title: state.showSidebarLyrics ? state.loc("Hide Sidebar Lyrics") : state.loc("Show Sidebar Lyrics"),
             action: #selector(menuToggleSidebarLyrics),
             keyEquivalent: "l"
         )
@@ -93,7 +96,7 @@ class TrayManager: NSObject {
         
         // 5c. Toggle Desktop Floating Lyrics
         let desktopLyricsItem = NSMenuItem(
-            title: AppState.shared.showDesktopLyrics ? "Hide Desktop Lyrics" : "Show Desktop Lyrics",
+            title: state.showDesktopLyrics ? state.loc("Hide Desktop Lyrics") : state.loc("Show Desktop Lyrics"),
             action: #selector(menuToggleDesktopLyrics),
             keyEquivalent: "L"
         )
@@ -102,7 +105,7 @@ class TrayManager: NSObject {
         
         // 6. Show Window
         let showWindowItem = NSMenuItem(
-            title: "Show Player",
+            title: state.loc("Show Player"),
             action: #selector(menuShowWindow),
             keyEquivalent: "s"
         )
@@ -110,22 +113,22 @@ class TrayManager: NSObject {
         menu.addItem(showWindowItem)
         
         // 6b. Language (语言) - Nested Submenu
-        let languageItem = NSMenuItem(title: "Language (语言)", action: nil, keyEquivalent: "")
+        let languageItem = NSMenuItem(title: state.loc("Language (语言)"), action: nil, keyEquivalent: "")
         let langSubMenu = NSMenu()
         
-        let currentLang = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+        let currentLang = state.appLanguage
         
-        let autoLangItem = NSMenuItem(title: "Auto (自适应)", action: #selector(menuSetLanguageAuto), keyEquivalent: "")
+        let autoLangItem = NSMenuItem(title: state.loc("Auto (自适应)"), action: #selector(menuSetLanguageAuto), keyEquivalent: "")
         autoLangItem.target = self
         autoLangItem.state = currentLang == "auto" ? .on : .off
         langSubMenu.addItem(autoLangItem)
         
-        let zhLangItem = NSMenuItem(title: "简体中文 (Chinese)", action: #selector(menuSetLanguageZh), keyEquivalent: "")
+        let zhLangItem = NSMenuItem(title: state.loc("简体中文 (Chinese)"), action: #selector(menuSetLanguageZh), keyEquivalent: "")
         zhLangItem.target = self
         zhLangItem.state = currentLang == "zh-CN" ? .on : .off
         langSubMenu.addItem(zhLangItem)
         
-        let enLangItem = NSMenuItem(title: "English (English)", action: #selector(menuSetLanguageEn), keyEquivalent: "")
+        let enLangItem = NSMenuItem(title: state.loc("English (English)"), action: #selector(menuSetLanguageEn), keyEquivalent: "")
         enLangItem.target = self
         enLangItem.state = currentLang == "en" ? .on : .off
         langSubMenu.addItem(enLangItem)
@@ -137,7 +140,7 @@ class TrayManager: NSObject {
         
         // 7. Quit App
         let quitItem = NSMenuItem(
-            title: "Quit",
+            title: state.loc("Quit"),
             action: #selector(menuQuit),
             keyEquivalent: "q"
         )
@@ -204,18 +207,21 @@ class TrayManager: NSObject {
     @objc private func menuSetLanguageAuto() {
         UserDefaults.standard.set("auto", forKey: "appLanguage")
         NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        AppState.shared.updateLanguage()
         setupMenu()
     }
     
     @objc private func menuSetLanguageZh() {
         UserDefaults.standard.set("zh-CN", forKey: "appLanguage")
         NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        AppState.shared.updateLanguage()
         setupMenu()
     }
     
     @objc private func menuSetLanguageEn() {
         UserDefaults.standard.set("en", forKey: "appLanguage")
         NotificationCenter.default.post(name: NSNotification.Name("LanguageChanged"), object: nil)
+        AppState.shared.updateLanguage()
         setupMenu()
     }
     
