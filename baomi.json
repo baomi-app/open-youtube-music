@@ -2,6 +2,12 @@
   "name": "Open YouTube Music",
   "status": "released",
   "icon": "icon.png",
+  "screenshots": [
+    "promo_screenshot.png",
+    "promo_normal_playback.png",
+    "promo_mini_player.png",
+    "promo_desktop_lyrics.png"
+  ],
   "accent": { "from": "#ff004f", "to": "#ff0000" },
   "platform": { "en": "macOS", "zh": "macOS" },
   "tagline": {
