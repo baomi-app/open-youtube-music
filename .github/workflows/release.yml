@@ -1,0 +1,37 @@
+name: Release macOS App
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger workflow when a tag starting with v is pushed (e.g. v1.0.0)
+
+permissions:
+  contents: write # CRITICAL: Grants the runner permission to create releases and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: macos-14 # macOS 14 runner supports Swift 5.10 / Swift 6 and compilers out-of-the-box!
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Application
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Compress App Bundle
+        run: |
+          cd build
+          zip -r ../Open.YouTube.Music.zip "Open YouTube Music.app"
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Open.YouTube.Music.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
