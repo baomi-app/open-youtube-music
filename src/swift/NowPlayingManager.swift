@@ -9,6 +9,7 @@ class NowPlayingManager: NSObject, UNUserNotificationCenterDelegate {
     private var lastTitle = ""
     private var lastArtist = ""
     private var currentAlbumArtUrl = ""
+    private var notificationWorkItem: DispatchWorkItem?
     
     func start() {
         setupRemoteCommands()
@@ -101,8 +102,20 @@ class NowPlayingManager: NSObject, UNUserNotificationCenterDelegate {
             lastTitle = title
             lastArtist = artist
             
-            // Deliver notification with artwork URL
-            showNotification(title: title, subtitle: artist, artworkUrl: albumArt)
+            // Cancel any pending notification to prevent duplicates or race conditions
+            notificationWorkItem?.cancel()
+            
+            // Delay notification slightly (600ms) to allow the album artwork URL to catch up.
+            // When transitioning tracks, title/artist update instantly in DOM/MediaSession,
+            // but the artwork URL takes a split second to load.
+            let titleToShow = title
+            let artistToShow = artist
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                self.showNotification(title: titleToShow, subtitle: artistToShow, artworkUrl: self.currentAlbumArtUrl)
+            }
+            notificationWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: workItem)
         }
     }
     
