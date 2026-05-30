@@ -8,10 +8,4 @@
   <!-- 3. Crisp White Play Button Triangle (aligned dynamically to the center-right) -->
   <polygon points="205,166 335,256 205,346" fill="#ffffff" />
 
-  <!-- 4. Symmetrical, Flat Golden-Yellow (#fbbf24) Tilted Corn Cob in the Center (Official Baomi Signature) -->
-  <path 
-    d="M 9.0 16.5 C 9.0 10.5, 10.0 5.5, 12 5.5 C 14.0 5.5, 15.0 10.5, 15.0 16.5 C 15.0 18.2, 13.8 19, 12 19 C 10.2 19, 9.0 18.2, 9.0 16.5 Z" 
-    fill="#fbbf24" 
-    transform="translate(256, 256) rotate(45) scale(11) translate(-12, -12.25)"
-  />
 </svg>
