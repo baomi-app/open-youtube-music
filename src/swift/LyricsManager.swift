@@ -13,6 +13,18 @@ struct LyricLine: Identifiable, Equatable, Hashable {
 class LyricsManager {
     static let shared = LyricsManager()
     
+    // Predefined English-Chinese title mappings for songs indexed under English names on LrcLib
+    private let titleAliases: [String: String] = [
+        "纵横四海": "Free Soul",
+        "恋人": "Perhaps Love",
+        "山川": "Mountain",
+        "脱胎换骨": "Reborn",
+        "情人": "Lover",
+        "夜跑": "A Night Owl",
+        "获奖人": "And The Winner Is",
+        "我们享受这单调旅程": "We suppose to relish it"
+    ]
+    
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
     func parseLRC(_ lrcText: String) -> [LyricLine] {
         var lines: [LyricLine] = []
@@ -129,23 +141,25 @@ class LyricsManager {
             return
         }
 
-        let cleanedTitle = cleanTitle(title)
+        // Apply title aliases (e.g. for songs indexed under English names on LrcLib)
+        let resolvedTitle = titleAliases[title] ?? titleAliases[cleanTitle(title)] ?? title
+        let cleanedTitle = cleanTitle(resolvedTitle)
         let cleanedArtist = cleanArtist(artist)
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
 
-        print("🔍 Syncing lyrics waterfall started: Title='\(title)' -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
+        print("🔍 Syncing lyrics waterfall started: Title='\(title)' (Resolved='\(resolvedTitle)') -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
 
-        // Step 1: Try precise GET with original metadata
-        tryPreciseGet(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
+        // Step 1: Try precise GET with original resolved metadata
+        tryPreciseGet(title: resolvedTitle, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
             if let lines = lines {
                 completion(lines, mTitle, mArtist)
                 return
             }
 
-            // Step 2: Try precise GET with cleaned metadata (if different)
+            // Step 2: Try precise GET with cleaned resolved metadata (if different)
             guard let self = self else { completion(nil, nil, nil); return }
-            if cleanedTitle != title || cleanedArtist != artist {
-                print("🔍 Step 2: Trying precise GET with cleaned metadata...")
+            if cleanedTitle != resolvedTitle || cleanedArtist != artist {
+                print("🔍 Step 2: Trying precise GET with cleaned resolved metadata...")
                 self.tryPreciseGet(title: cleanedTitle, artist: cleanedArtist, duration: durationSec) { lines, mTitle, mArtist in
                     if let lines = lines {
                         completion(lines, mTitle, mArtist)
