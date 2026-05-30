@@ -35,7 +35,7 @@ struct SidebarLyricsView: View {
                         .font(.system(size: 40))
                         .foregroundColor(.white.opacity(0.2))
                         .padding(.bottom, 12)
-                    Text(state.lyricsLoading ? "Fetching lyrics..." : "No synced lyrics available")
+                    Text(state.lyricsLoading ? "正在获取歌词..." : "暂无同步歌词")
                         .font(.body)
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
@@ -165,41 +165,52 @@ struct DesktopLyricsView: View {
     var body: some View {
         VStack(spacing: 10) {
             if state.lyricLines.isEmpty {
-                Text("🎵 Open YouTube Music")
+                // Explicitly show search/not found status for lyrics
+                let statusText = state.lyricsLoading ? "🎵 正在获取歌词..." : "🎵 暂无同步歌词"
+                Text(statusText)
                     .font(.system(size: CGFloat(20 * state.lyricsScale), weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                    .animation(.easeInOut(duration: 0.25), value: statusText)
             } else {
                 let activeIndex = state.activeLyricIndex ?? -1
+                let isPrelude = activeIndex < 0
                 
-                // Line 1: Active Lyric (single line, no ellipsis, no shadow)
-                let activeText = (activeIndex >= 0 && activeIndex < state.lyricLines.count)
-                    ? state.lyricLines[activeIndex].text
-                    : "Music playing..."
-                
-                Text(activeText)
-                    .font(.system(size: CGFloat(36 * state.lyricsScale), weight: .black)) // Bold and highly readable font size
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(1) // Keep strictly on a single line!
-                    .fixedSize(horizontal: true, vertical: false) // Unconstrained horizontal bounds for natural size measurement!
-                    .animation(.easeInOut(duration: 0.25), value: activeText)
-                
-                // Line 2: Next Lyric (single line, no ellipsis, no shadow, no blur, dynamic scaling)
-                let nextIndex = activeIndex + 1
-                let nextText = (nextIndex >= 0 && nextIndex < state.lyricLines.count)
-                    ? state.lyricLines[nextIndex].text
-                    : ""
-                
-                if !nextText.isEmpty {
-                    Text(nextText)
-                        .font(.system(size: CGFloat(24 * state.lyricsScale), weight: .bold)) // High readability secondary line
-                        .foregroundColor(.white.opacity(0.65))
+                if isPrelude {
+                    Text("···")
+                        .font(.system(size: CGFloat(36 * state.lyricsScale), weight: .black))
+                        .foregroundColor(.white.opacity(0.55))
                         .multilineTextAlignment(.center)
-                        .lineLimit(1) // Keep strictly on a single line!
-                        .fixedSize(horizontal: true, vertical: false) // Unconstrained horizontal bounds for natural size measurement!
-                        .animation(.easeInOut(duration: 0.25), value: nextText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .animation(.easeInOut(duration: 0.25), value: "···")
+                } else {
+                    // Line 1: Active Lyric
+                    let activeText = state.lyricLines[activeIndex].text
+                    Text(activeText)
+                        .font(.system(size: CGFloat(36 * state.lyricsScale), weight: .black))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .animation(.easeInOut(duration: 0.25), value: activeText)
+                    
+                    // Line 2: Next Lyric
+                    let nextIndex = activeIndex + 1
+                    let nextText = (nextIndex >= 0 && nextIndex < state.lyricLines.count)
+                        ? state.lyricLines[nextIndex].text
+                        : ""
+                    
+                    if !nextText.isEmpty {
+                        Text(nextText)
+                            .font(.system(size: CGFloat(24 * state.lyricsScale), weight: .bold))
+                            .foregroundColor(.white.opacity(0.65))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .animation(.easeInOut(duration: 0.25), value: nextText)
+                    }
                 }
             }
         }
@@ -207,7 +218,7 @@ struct DesktopLyricsView: View {
         .padding(.vertical, 22)
         .background(
             RoundedRectangle(cornerRadius: 24)
-                .fill(Color.black.opacity(0.65)) // Sleek transparent capsule background for perfect legibility without shadows
+                .fill(Color.black.opacity(0.65)) // Sleek transparent capsule background for perfect legibility
                 .overlay(
                     RoundedRectangle(cornerRadius: 24)
                         .stroke(Color.white.opacity(0.12), lineWidth: 1)
@@ -545,7 +556,7 @@ struct NativeMiniPlayerView: View {
                     VStack(spacing: 0) {
                         if state.lyricLines.isEmpty {
                             Spacer()
-                            Text(state.lyricsLoading ? "Fetching lyrics..." : "No lyrics available")
+                            Text(state.lyricsLoading ? "正在获取歌词..." : "暂无歌词")
                                 .font(.system(size: 13))
                                 .foregroundColor(.white.opacity(0.4))
                                 .multilineTextAlignment(.center)

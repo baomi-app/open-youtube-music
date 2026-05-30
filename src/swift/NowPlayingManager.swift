@@ -1,8 +1,9 @@
 import Foundation
 import MediaPlayer
 import AppKit
+import UserNotifications
 
-class NowPlayingManager {
+class NowPlayingManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NowPlayingManager()
     
     private var lastTitle = ""
@@ -11,6 +12,10 @@ class NowPlayingManager {
     
     func start() {
         setupRemoteCommands()
+        
+        // Request authorization and set delegate for modern UserNotifications
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         
         NotificationCenter.default.addObserver(
             self,
@@ -90,16 +95,14 @@ class NowPlayingManager {
             }
         }
         
-        // Trigger a macOS system notification when a new song starts playing in background
+        // Trigger a macOS system notification when a new song starts playing
         let isNewTrack = title != lastTitle || artist != lastArtist
         if isNewTrack && playing && !title.isEmpty {
             lastTitle = title
             lastArtist = artist
             
-            // Only notify if window is not active/key window
-            if let window = NSApplication.shared.windows.first, !window.isKeyWindow {
-                showNotification(title: title, subtitle: artist)
-            }
+            // Deliver notification with artwork URL
+            showNotification(title: title, subtitle: artist, artworkUrl: albumArt)
         }
     }
     
@@ -119,12 +122,92 @@ class NowPlayingManager {
         }.resume()
     }
     
-    private func showNotification(title: String, subtitle: String) {
-        let notification = NSUserNotification()
-        notification.title = title
-        notification.subtitle = subtitle
-        notification.soundName = nil // Silent to match Electron silent notification
+    private func saveArtworkToTempFile(from urlString: String, completion: @escaping (URL?) -> Void) {
+        guard let url = URL(string: urlString) else {
+            completion(nil)
+            return
+        }
         
-        NSUserNotificationCenter.default.deliver(notification)
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data = data else {
+                completion(nil)
+                return
+            }
+            
+            let tempDirectory = FileManager.default.temporaryDirectory
+            let tempFileURL = tempDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("jpg")
+            
+            do {
+                try data.write(to: tempFileURL)
+                completion(tempFileURL)
+            } catch {
+                print("Failed to write artwork data to temp file: \(error)")
+                completion(nil)
+            }
+        }.resume()
+    }
+    
+    private func showNotification(title: String, subtitle: String, artworkUrl: String?) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.subtitle = subtitle
+        
+        if let artworkUrl = artworkUrl, !artworkUrl.isEmpty {
+            saveArtworkToTempFile(from: artworkUrl) { [weak self] tempURL in
+                guard let self = self else { return }
+                
+                if let tempURL = tempURL {
+                    do {
+                        let attachment = try UNNotificationAttachment(
+                            identifier: UUID().uuidString,
+                            url: tempURL,
+                            options: nil
+                        )
+                        content.attachments = [attachment]
+                    } catch {
+                        print("Error creating notification attachment: \(error)")
+                    }
+                }
+                
+                // Deliver notification and pass tempURL to clean up afterwards
+                self.deliverNotification(content: content, tempURL: tempURL)
+            }
+        } else {
+            deliverNotification(content: content, tempURL: nil)
+        }
+    }
+    
+    private func deliverNotification(content: UNNotificationContent, tempURL: URL?) {
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil // Deliver immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error delivering notification: \(error)")
+            }
+            
+            // Safe cleanup of temporary artwork file on completion
+            if let tempURL = tempURL {
+                do {
+                    try FileManager.default.removeItem(at: tempURL)
+                } catch {
+                    print("Error removing temporary artwork file: \(error)")
+                }
+            }
+        }
+    }
+    
+    // Enable foreground notifications (crucial for user testing & instant feedback)
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        if #available(macOS 11.0, *) {
+            completionHandler([.banner, .list])
+        } else {
+            completionHandler([.alert])
+        }
     }
 }

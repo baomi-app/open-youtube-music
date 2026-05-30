@@ -226,7 +226,7 @@ class TrayManager: NSObject {
             
             let center = CGPoint(x: rect.midX, y: rect.midY)
             
-            // 1. Draw solid outer circle (filled)
+            // 1. Draw solid outer circle (filled) - the main official record disk
             context.setBlendMode(.normal)
             let outerPath = CGMutablePath()
             outerPath.addArc(center: center, radius: 8.0, startAngle: 0, endAngle: .pi * 2, clockwise: false)
@@ -234,22 +234,21 @@ class TrayManager: NSObject {
             context.setFillColor(NSColor.black.cgColor)
             context.fillPath()
             
-            // 2. Erase the inner circle to create a transparent gap (cutout)
+            // 2. Erase a thin ring (transparent cutout) to match official concentric styling
             context.setBlendMode(.clear)
-            let innerPath = CGMutablePath()
-            innerPath.addArc(center: center, radius: 5.5, startAngle: 0, endAngle: .pi * 2, clockwise: false)
-            context.addPath(innerPath)
-            context.fillPath()
+            context.setLineWidth(1.0)
+            let ringPath = CGMutablePath()
+            ringPath.addArc(center: center, radius: 5.25, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+            context.addPath(ringPath)
+            context.strokePath()
             
-            // 3. Draw the solid center play triangle
-            context.setBlendMode(.normal)
+            // 3. Erase the center play triangle (transparent cutout)
             let triPath = CGMutablePath()
             triPath.move(to: CGPoint(x: center.x - 1.3, y: center.y + 2.2))
             triPath.addLine(to: CGPoint(x: center.x - 1.3, y: center.y - 2.2))
             triPath.addLine(to: CGPoint(x: center.x + 2.5, y: center.y))
             triPath.closeSubpath()
             context.addPath(triPath)
-            context.setFillColor(NSColor.black.cgColor)
             context.fillPath()
             
             return true

@@ -483,20 +483,26 @@ struct WebView: NSViewRepresentable {
                 if (titleEl) title = titleEl.textContent.trim();
                 
                 if (bylineEl) {
-                    // Extract strictly the artist name from the byline (first link to channel, or split by dot)
+                    // Extract strictly the artist name from the byline
                     var links = bylineEl.querySelectorAll('a');
-                    var artistLink = null;
+                    var artistParts = [];
+                    var detectedAlbum = "";
                     for (var i = 0; i < links.length; i++) {
                         var href = links[i].getAttribute('href') || "";
-                        if (href.indexOf('channel/') !== -1 || href.indexOf('browse/UC') !== -1) {
-                            artistLink = links[i];
-                            break;
+                        var text = links[i].textContent.trim();
+                        if (text) {
+                            if (href.indexOf('browse/MPRE') !== -1 || href.indexOf('album/') !== -1) {
+                                detectedAlbum = text;
+                            } else if (href.indexOf('channel/') !== -1 || href.indexOf('browse/UC') !== -1 || href.indexOf('browse/FIBY') !== -1 || href.indexOf('browse/FE') !== -1 || (href.indexOf('browse/') !== -1 && href.indexOf('browse/MPRE') === -1)) {
+                                artistParts.push(text);
+                            }
                         }
                     }
-                    if (artistLink) {
-                        artist = artistLink.innerText.trim();
+                    if (artistParts.length > 0) {
+                        artist = artistParts.join(' & ');
                     } else {
-                        var parts = bylineEl.innerText.split('•');
+                        // Fallback: split by any bullet/middle dot characters
+                        var parts = bylineEl.textContent.split(/\\s*[\\u2022\\u00b7•·]\\s*/);
                         if (parts.length > 0) {
                             artist = parts[0].trim();
                         }
@@ -504,10 +510,27 @@ struct WebView: NSViewRepresentable {
                     if (!artist) {
                         artist = bylineEl.textContent.trim();
                     }
+                    if (detectedAlbum) {
+                        album = detectedAlbum;
+                    }
                 }
                 
                 var albumArtImg = root.querySelector('img.image') || root.querySelector('.image') || document.querySelector('ytmusic-player-bar img.image') || root.querySelector('#thumbnail img');
                 if (albumArtImg) albumArt = albumArtImg.src;
+                
+                // Prioritize high-resolution MediaSession artwork if available
+                if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
+                    var artwork = navigator.mediaSession.metadata.artwork;
+                    var mediaArt = artwork[artwork.length - 1].src || "";
+                    if (mediaArt) albumArt = mediaArt;
+                }
+                
+                // Boost resolution of albumArt image to get premium high-fidelity 1000x1000 artwork
+                if (albumArt) {
+                    albumArt = albumArt.replace(/=w\\d+-h\\d+/, "=w1000-h1000")
+                                       .replace(/=s\\d+/, "=s1000")
+                                       .replace(/\\/s\\d+-c\\//, "/s1000-c/");
+                }
                 
                 // 2. Secondary Fallback: If DOM is empty, fallback to MediaSession API
                 if (!title || !artist) {
@@ -517,7 +540,12 @@ struct WebView: NSViewRepresentable {
                         album = navigator.mediaSession.metadata.album || "";
                         if (navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
                             var artwork = navigator.mediaSession.metadata.artwork;
-                            albumArt = artwork[artwork.length - 1].src || "";
+                            var fallbackArt = artwork[artwork.length - 1].src || "";
+                            if (fallbackArt) {
+                                albumArt = fallbackArt.replace(/=w\\d+-h\\d+/, "=w1000-h1000")
+                                                      .replace(/=s\\d+/, "=s1000")
+                                                      .replace(/\\/s\\d+-c\\//, "/s1000-c/");
+                            }
                         }
                     }
                 }
@@ -530,14 +558,19 @@ struct WebView: NSViewRepresentable {
                         for (var i = 0; i < links.length; i++) {
                             var href = links[i].getAttribute('href') || "";
                             if (href.indexOf('browse/MPRE') !== -1 || href.indexOf('album/') !== -1) {
-                                album = links[i].innerText.trim();
+                                album = links[i].textContent.trim();
                                 break;
                             }
                         }
                         if (!album) {
-                            var parts = byline.innerText.split('•');
+                            var parts = byline.textContent.split(/\\s*[\\u2022\\u00b7•·]\\s*/);
                             if (parts.length >= 2) {
-                                album = parts[1].trim();
+                                var secondPart = parts[1].trim();
+                                if (/^\\d{4}$/.test(secondPart)) {
+                                    album = "";
+                                } else {
+                                    album = secondPart;
+                                }
                             }
                         }
                     }
@@ -559,6 +592,7 @@ struct WebView: NSViewRepresentable {
                     playing = !video.paused && !video.ended;
                 }
                 
+                console.log("[Bridge Send] title: " + title + ", artist: " + artist + ", album: " + album);
                 window.webkit.messageHandlers.YTMBridge.postMessage({
                     title: title,
                     artist: artist,
@@ -711,18 +745,119 @@ struct WebView: NSViewRepresentable {
             object: nil,
             queue: .main
         ) { _ in
+            print("🔔 Swift: Received ToggleWebPlayerPage notification! Injecting JavaScript...")
             let js = """
             (function() {
                 var playerBar = document.querySelector('ytmusic-player-bar');
                 if (playerBar) {
-                    var root = playerBar.shadowRoot || playerBar;
-                    var expandBtn = root.querySelector('.expand-button') || root.querySelector('#expand-button');
-                    if (expandBtn) {
-                        expandBtn.click();
-                        return true;
+                    // Save original styles
+                    var prevStyle = playerBar.getAttribute('style') || '';
+                    
+                    // Temporarily force playerBar and background to be visible & interactable in layout
+                    playerBar.style.setProperty('position', 'fixed', 'important');
+                    playerBar.style.setProperty('bottom', '0px', 'important');
+                    playerBar.style.setProperty('height', '72px', 'important');
+                    playerBar.style.setProperty('width', '100vw', 'important');
+                    playerBar.style.setProperty('opacity', '1', 'important');
+                    playerBar.style.setProperty('visibility', 'visible', 'important');
+                    playerBar.style.setProperty('overflow', 'visible', 'important');
+                    playerBar.style.setProperty('display', 'flex', 'important');
+                    playerBar.style.setProperty('pointer-events', 'auto', 'important');
+                    
+                    var pbBg = document.querySelector('#player-bar-background');
+                    var prevBgStyle = pbBg ? (pbBg.getAttribute('style') || '') : '';
+                    if (pbBg) {
+                        pbBg.style.setProperty('position', 'fixed', 'important');
+                        pbBg.style.setProperty('bottom', '0px', 'important');
+                        pbBg.style.setProperty('height', '72px', 'important');
+                        pbBg.style.setProperty('opacity', '1', 'important');
+                        pbBg.style.setProperty('visibility', 'visible', 'important');
                     }
-                    playerBar.click();
-                    return true;
+                    
+                    var layout = document.querySelector('ytmusic-app-layout');
+                    var prevLayoutStyle = layout ? (layout.getAttribute('style') || '') : '';
+                    if (layout) {
+                        layout.style.setProperty('pointer-events', 'auto', 'important');
+                    }
+
+                    var root = playerBar.shadowRoot || playerBar;
+                    var expandBtn = root.querySelector('.expand-button') || root.querySelector('#expand-button') || root.querySelector('ytmusic-player-bar .expand-button');
+                    
+                    var safeClick = function(el) {
+                        if (!el) return false;
+                        
+                        var mousedown = new MouseEvent('mousedown', {
+                            bubbles: true,
+                            cancelable: true,
+                            composed: true,
+                            clientX: window.innerWidth / 2,
+                            clientY: window.innerHeight - 36
+                        });
+                        var mouseup = new MouseEvent('mouseup', {
+                            bubbles: true,
+                            cancelable: true,
+                            composed: true,
+                            clientX: window.innerWidth / 2,
+                            clientY: window.innerHeight - 36
+                        });
+                        var click = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            composed: true,
+                            clientX: window.innerWidth / 2,
+                            clientY: window.innerHeight - 36
+                        });
+                        
+                        el.dispatchEvent(mousedown);
+                        el.dispatchEvent(mouseup);
+                        el.dispatchEvent(click);
+                        
+                        if (typeof el.click === 'function') {
+                            el.click();
+                        }
+                        return true;
+                    };
+                    
+                    var clicked = false;
+                    if (expandBtn) {
+                        clicked = safeClick(expandBtn);
+                    }
+                    if (!clicked) {
+                        var leftContent = root.querySelector('.left-content') || root.querySelector('#thumbnail');
+                        if (leftContent) {
+                            clicked = safeClick(leftContent);
+                        }
+                    }
+                    if (!clicked) {
+                        clicked = safeClick(playerBar);
+                    }
+                    
+                    // Restore original styles after a minor delay
+                    setTimeout(function() {
+                        if (prevStyle) {
+                            playerBar.setAttribute('style', prevStyle);
+                        } else {
+                            playerBar.removeAttribute('style');
+                        }
+                        
+                        if (pbBg) {
+                            if (prevBgStyle) {
+                                pbBg.setAttribute('style', prevBgStyle);
+                            } else {
+                                pbBg.removeAttribute('style');
+                            }
+                        }
+                        
+                        if (layout) {
+                            if (prevLayoutStyle) {
+                                layout.setAttribute('style', prevLayoutStyle);
+                            } else {
+                                layout.removeAttribute('style');
+                            }
+                        }
+                    }, 50);
+                    
+                    return clicked;
                 }
                 return false;
             })();
