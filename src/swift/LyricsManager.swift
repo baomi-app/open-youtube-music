@@ -10,20 +10,25 @@ struct LyricLine: Identifiable, Equatable, Hashable {
     }
 }
 
+struct LyricSearchResult: Identifiable, Equatable, Hashable {
+    let id: Int
+    let trackName: String
+    let artistName: String
+    let albumName: String
+    let duration: TimeInterval
+    let syncedLyrics: String
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    static func == (lhs: LyricSearchResult, rhs: LyricSearchResult) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
 class LyricsManager {
     static let shared = LyricsManager()
-    
-    // Predefined English-Chinese title mappings for songs indexed under English names on LrcLib
-    private let titleAliases: [String: String] = [
-        "纵横四海": "Free Soul",
-        "恋人": "Perhaps Love",
-        "山川": "Mountain",
-        "脱胎换骨": "Reborn",
-        "情人": "Lover",
-        "夜跑": "A Night Owl",
-        "获奖人": "And The Winner Is",
-        "我们享受这单调旅程": "We suppose to relish it"
-    ]
     
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
     func parseLRC(_ lrcText: String) -> [LyricLine] {
@@ -89,11 +94,11 @@ class LyricsManager {
     private func cleanTitle(_ title: String) -> String {
         var cleaned = title
         
-        // Remove common YouTube/YTM suffixes
+        // Remove common YouTube/YTM suffixes, soundtrack, cover, and theme identifiers
         let patterns = [
-            "\\s*[\\(（][^\\)）]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^\\)）]*[\\)）]",
-            "\\s*[\\[［][^\\]］]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱)[^\\]］]*[\\]］]",
-            "\\s*-\\s*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen).*",
+            "\\s*[\\(（][^\\)）]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱|电影|主题曲|片尾曲|插曲|原声带|原声|翻唱|Cover|OST|Soundtrack|Theme|Album)[^\\)）]*[\\)）]",
+            "\\s*[\\[［][^\\]］]*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|feat|with|合作音乐人|合作|伴奏|演奏|remix|prod|主唱|电影|主题曲|片尾曲|插曲|原声带|原声|翻唱|Cover|OST|Soundtrack|Theme|Album)[^\\]］]*[\\]］]",
+            "\\s*-\\s*(?:Official|Lyric|Video|Audio|Live|Remastered|Version|Track|Edit|Widescreen|OST|Soundtrack|Theme).*",
             "\\s*-\\s*Afterwards.*" // e.g. 孙燕姿 - 日落 - Afterwards etc.
         ]
         
@@ -134,43 +139,184 @@ class LyricsManager {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // Fetch synced lyrics from LrcLib with resilient waterfall search
+    // Fetch synced lyrics from LrcLib with resilient waterfall search and dynamic translation
     func fetchSyncedLyrics(title: String, artist: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         guard !title.isEmpty else {
             completion(nil, nil, nil)
             return
         }
 
-        // Apply title aliases (e.g. for songs indexed under English names on LrcLib)
-        let resolvedTitle = titleAliases[title] ?? titleAliases[cleanTitle(title)] ?? title
-        let cleanedTitle = cleanTitle(resolvedTitle)
+        let cleanedTitle = cleanTitle(title)
         let cleanedArtist = cleanArtist(artist)
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
 
-        print("🔍 Syncing lyrics waterfall started: Title='\(title)' (Resolved='\(resolvedTitle)') -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
+        print("🔍 Syncing lyrics waterfall started: Title='\(title)' -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
 
-        // Step 1: Try precise GET with original resolved metadata
-        tryPreciseGet(title: resolvedTitle, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
+        // Step 1: Try precise GET with original metadata
+        tryPreciseGet(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
             if let lines = lines {
                 completion(lines, mTitle, mArtist)
                 return
             }
 
-            // Step 2: Try precise GET with cleaned resolved metadata (if different)
+            // Step 2: Try precise GET with cleaned metadata (if different)
             guard let self = self else { completion(nil, nil, nil); return }
-            if cleanedTitle != resolvedTitle || cleanedArtist != artist {
-                print("🔍 Step 2: Trying precise GET with cleaned resolved metadata...")
+            if cleanedTitle != title || cleanedArtist != artist {
+                print("🔍 Step 2: Trying precise GET with cleaned metadata...")
                 self.tryPreciseGet(title: cleanedTitle, artist: cleanedArtist, duration: durationSec) { lines, mTitle, mArtist in
                     if let lines = lines {
                         completion(lines, mTitle, mArtist)
                         return
                     }
-                    self.tryTraditionalAndSimplifiedWaterfall(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
+                    self.runWaterfallAndITunesTranslation(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
                 }
             } else {
-                self.tryTraditionalAndSimplifiedWaterfall(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
+                self.runWaterfallAndITunesTranslation(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
             }
         }
+    }
+
+    private func runWaterfallAndITunesTranslation(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        self.tryTraditionalAndSimplifiedWaterfall(title: title, artist: artist, duration: duration) { [weak self] lines, mTitle, mArtist in
+            if let lines = lines {
+                completion(lines, mTitle, mArtist)
+                return
+            }
+            
+            // Standard waterfall returned nothing. Try iTunes translation fallback!
+            guard let self = self else { completion(nil, nil, nil); return }
+            print("🔍 Standard waterfall failed. Trying iTunes cross-lingual translation fallback...")
+            
+            self.tryITunesTranslation(title: title, artist: artist) { resolvedTitle, resolvedArtist in
+                guard let resolvedTitle = resolvedTitle, !resolvedTitle.isEmpty,
+                      resolvedTitle.lowercased() != title.lowercased() else {
+                    print("✗ iTunes translation found no alternative title.")
+                    completion(nil, nil, nil)
+                    return
+                }
+                
+                print("✓ iTunes translation resolved: '\(title)' -> '\(resolvedTitle)' by '\(resolvedArtist ?? artist)'")
+                
+                // Trigger a secondary clean search with the translated title!
+                let cleanResolvedTitle = self.cleanTitle(resolvedTitle)
+                let cleanResolvedArtist = self.cleanArtist(resolvedArtist ?? artist)
+                
+                print("🔍 Triggering secondary waterfall with translated metadata: Title='\(cleanResolvedTitle)', Artist='\(cleanResolvedArtist)'")
+                self.tryPreciseGet(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration) { lines, mTitle, mArtist in
+                    if let lines = lines {
+                        completion(lines, mTitle, mArtist)
+                        return
+                    }
+                    
+                    self.tryTraditionalAndSimplifiedWaterfall(title: cleanResolvedTitle, artist: cleanResolvedArtist, duration: duration, completion: completion)
+                }
+            }
+        }
+    }
+
+    private func tryITunesTranslation(title: String, artist: String, completion: @escaping (String?, String?) -> Void) {
+        let query = "\(title) \(artist)"
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://itunes.apple.com/search?term=\(encodedQuery)&media=music&entity=song&limit=1"
+        
+        guard let url = URL(string: urlString) else {
+            completion(nil, nil)
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4.0 // Fast timeout
+        
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            guard let data = data, error == nil else {
+                completion(nil, nil)
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let results = json["results"] as? [[String: Any]],
+                   let first = results.first {
+                    let trackName = first["trackName"] as? String
+                    let artistName = first["artistName"] as? String
+                    completion(trackName, artistName)
+                    return
+                }
+            } catch {
+                print("✗ Failed to parse iTunes translation: \(error)")
+            }
+            completion(nil, nil)
+        }.resume()
+    }
+
+    // Custom manual search for synced lyrics bypassing strict matching rules
+    func fetchSyncedLyricsCustom(query: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        guard !query.isEmpty else {
+            completion(nil, nil, nil)
+            return
+        }
+        let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
+        print("🔍 Custom synced lyrics search started: Query='\(query)', Duration=\(durationSec)s")
+        tryKeywordSearch(query: query, duration: durationSec, targetArtist: "", targetTitle: "", strictArtistCheck: false, strictTitleCheck: false, completion: completion)
+    }
+
+    // Search synced lyrics from LrcLib returning all matching candidates
+    func searchSyncedLyrics(query: String, completion: @escaping ([LyricSearchResult]?) -> Void) {
+        guard !query.isEmpty else {
+            completion(nil)
+            return
+        }
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://lrclib.net/api/search?q=\(encodedQuery)"
+        
+        guard let url = URL(string: urlString) else {
+            completion(nil)
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8.0
+        
+        print("🔍 Searching synced lyrics list for Query='\(query)'")
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            guard let data = data, error == nil else {
+                completion(nil)
+                return
+            }
+            
+            do {
+                if let results = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    // Filter candidates containing syncedLyrics
+                    let filtered = results.filter { ($0["syncedLyrics"] as? String) != nil }
+                    var list: [LyricSearchResult] = []
+                    
+                    for dict in filtered {
+                        if let id = dict["id"] as? Int,
+                           let trackName = dict["trackName"] as? String,
+                           let artistName = dict["artistName"] as? String,
+                           let syncedLrc = dict["syncedLyrics"] as? String {
+                            let albumName = dict["albumName"] as? String ?? ""
+                            let duration = dict["duration"] as? Double ?? 0.0
+                            
+                            list.append(LyricSearchResult(
+                                id: id,
+                                trackName: trackName,
+                                artistName: artistName,
+                                albumName: albumName,
+                                duration: duration,
+                                syncedLyrics: syncedLrc
+                            ))
+                        }
+                    }
+                    print("✓ Found \(list.count) synced lyrics candidates for Query='\(query)'")
+                    completion(list)
+                    return
+                }
+            } catch {
+                print("✗ Failed to parse search list: \(error)")
+            }
+            completion(nil)
+        }.resume()
     }
 
     private func tryTraditionalAndSimplifiedWaterfall(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
@@ -406,12 +552,24 @@ class LyricsManager {
                         
                         candidates = candidates.filter { candidate in
                             guard let candTitle = (candidate["trackName"] as? String)?.lowercased() else { return false }
-                            return candTitle.contains(targetTitleLower) ||
-                                   candTitle.contains(targetTitleTrad) ||
-                                   candTitle.contains(targetTitleSimp) ||
-                                   targetTitleLower.contains(candTitle) ||
-                                   targetTitleTrad.contains(candTitle) ||
-                                   targetTitleSimp.contains(candTitle)
+                            
+                            // Prevent cross-matching Live/Remix/Acoustic/Demo versions with Studio versions
+                            let specialKeywords = ["live", "remix", "acoustic", "demo", "instrumental", "伴奏", "演奏", "remaster"]
+                            for keyword in specialKeywords {
+                                let targetHas = targetTitleLower.contains(keyword)
+                                let candHas = candTitle.contains(keyword)
+                                if targetHas != candHas {
+                                    return false
+                                }
+                            }
+                            
+                            let cleanedCand = self.cleanTitle(candTitle).lowercased()
+                            return cleanedCand.contains(targetTitleLower) ||
+                                   cleanedCand.contains(targetTitleTrad) ||
+                                   cleanedCand.contains(targetTitleSimp) ||
+                                   targetTitleLower.contains(cleanedCand) ||
+                                   targetTitleTrad.contains(cleanedCand) ||
+                                   targetTitleSimp.contains(cleanedCand)
                         }
                     }
                     

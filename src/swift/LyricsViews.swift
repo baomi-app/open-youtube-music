@@ -1,7 +1,15 @@
 import SwiftUI
 
+private func formatDuration(_ duration: TimeInterval) -> String {
+    let mins = Int(duration) / 60
+    let secs = Int(duration) % 60
+    return String(format: "%02d:%02d", mins, secs)
+}
+
 struct SidebarLyricsView: View {
     @ObservedObject var state = AppState.shared
+    @State private var showSearchBar = false
+    @State private var searchQuery = ""
     
     var body: some View {
         VStack(spacing: 0) {
@@ -19,6 +27,22 @@ struct SidebarLyricsView: View {
                     }
                 }
                 Spacer()
+                
+                Button(action: {
+                    withAnimation {
+                        showSearchBar.toggle()
+                        if showSearchBar && searchQuery.isEmpty {
+                            searchQuery = state.trackTitle == "Not Playing" ? "" : state.trackTitle
+                        }
+                    }
+                }) {
+                    Image(systemName: "magnifyingglass.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(showSearchBar ? .blue : .gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.trailing, 4)
+                
                 Button(action: {
                     AppState.shared.showSidebarLyrics = false
                 }) {
@@ -32,21 +56,172 @@ struct SidebarLyricsView: View {
             .padding(.top, 16)
             .padding(.bottom, 16)
             
+            if showSearchBar {
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField("Search song, artist, alias...", text: $searchQuery)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(8)
+                            .foregroundColor(.white)
+                            .font(.system(size: 13))
+                            .onSubmit {
+                                state.triggerSearchList(query: searchQuery)
+                            }
+                        
+                        Button(action: {
+                            state.triggerSearchList(query: searchQuery)
+                        }) {
+                            Text("Search")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.blue.opacity(0.8))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
             Divider()
                 .background(Color.white.opacity(0.1))
             
-            if state.lyricLines.isEmpty {
+            if !state.searchResults.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Search Results (\(state.searchResults.count))")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white.opacity(0.5))
+                        Spacer()
+                        Button(action: {
+                            withAnimation {
+                                state.searchResults = []
+                            }
+                        }) {
+                            Text("Clear")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.red.opacity(0.8))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(state.searchResults) { result in
+                                Button(action: {
+                                    state.selectSearchResult(result)
+                                }) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text(result.trackName)
+                                                .font(.system(size: 13, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .lineLimit(1)
+                                            Spacer()
+                                            Text(formatDuration(result.duration))
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.white.opacity(0.4))
+                                        }
+                                        
+                                        HStack {
+                                            Text(result.artistName)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.white.opacity(0.6))
+                                                .lineLimit(1)
+                                            if !result.albumName.isEmpty {
+                                                Text("•")
+                                                    .foregroundColor(.white.opacity(0.3))
+                                                    .font(.system(size: 10))
+                                                Text(result.albumName)
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.white.opacity(0.4))
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .transition(.opacity)
+            } else if state.lyricLines.isEmpty {
                 VStack {
                     Spacer()
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 40))
-                        .foregroundColor(.white.opacity(0.2))
-                        .padding(.bottom, 12)
-                    Text(state.lyricsLoading ? "正在获取歌词..." : "暂无同步歌词")
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
+                    if state.lyricsLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.2)
+                            .padding(.bottom, 12)
+                        Text("正在获取歌词...")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.6))
+                    } else {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 40))
+                            .foregroundColor(.white.opacity(0.2))
+                            .padding(.bottom, 12)
+                        Text("暂无同步歌词")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.4))
+                            .padding(.bottom, 24)
+                        
+                        VStack(spacing: 12) {
+                            Text("手动搜索歌词")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            HStack(spacing: 8) {
+                                TextField("搜索歌名、歌手...", text: $searchQuery)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(Color.white.opacity(0.1))
+                                    .cornerRadius(8)
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 13))
+                                    .onSubmit {
+                                        state.triggerSearchList(query: searchQuery)
+                                    }
+                                
+                                Button(action: {
+                                    state.triggerSearchList(query: searchQuery)
+                                }) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.blue.opacity(0.8))
+                                        .cornerRadius(8)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                    }
                     Spacer()
                 }
             } else {
@@ -135,6 +310,29 @@ struct SidebarLyricsView: View {
                     }
                 }
             }
+            
+            Section("Lyrics Sync Offset") {
+                Button(action: { state.lyricsOffset += 0.5 }) {
+                    Text("Delay Lyrics (+0.5s)")
+                }
+                Button(action: { state.lyricsOffset -= 0.5 }) {
+                    Text("Advance Lyrics (-0.5s)")
+                }
+                if state.lyricsOffset != 0.0 {
+                    Button(action: { state.lyricsOffset = 0.0 }) {
+                        Text("Reset (Current: \(String(format: "%.1fs", state.lyricsOffset)))")
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if searchQuery.isEmpty && state.trackTitle != "Not Playing" {
+                searchQuery = state.trackTitle
+            }
+        }
+        .onChange(of: state.trackTitle) { newTitle in
+            searchQuery = newTitle == "Not Playing" ? "" : newTitle
+            showSearchBar = false
         }
     }
 }

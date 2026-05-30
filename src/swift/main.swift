@@ -30,6 +30,8 @@ class AppState: ObservableObject {
     @Published var lyricsLoading = false
     @Published var matchedTitle = ""
     @Published var matchedArtist = ""
+    @Published var searchResults: [LyricSearchResult] = []
+    @Published var lyricsOffset: Double = 0.0
     
     // Playback States
     @Published var trackTitle = "Not Playing"
@@ -48,6 +50,95 @@ class AppState: ObservableObject {
         self.showSidebarLyrics = savedSidebar
         self.showDesktopLyrics = savedDesktop
         self.lyricsScale = savedScale > 0 ? savedScale : 1.0
+    }
+    
+    // Custom search function to be triggered manually
+    func triggerCustomSearch(query: String) {
+        guard !query.isEmpty else { return }
+        
+        self.lyricsLoading = true
+        self.lyricLines = []
+        self.activeLyricIndex = nil
+        self.matchedTitle = "Searching..."
+        self.matchedArtist = "'\(query)'"
+        
+        let targetTitle = self.trackTitle
+        let targetArtist = self.trackArtist
+        let targetDuration = self.duration
+        
+        LyricsManager.shared.fetchSyncedLyricsCustom(query: query, duration: targetDuration) { [weak self] lines, mTitle, mArtist in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                // Prevent race conditions: check if the user has skipped the song in the meantime
+                guard targetTitle == self.trackTitle && targetArtist == self.trackArtist else {
+                    print("⚠️ Ignoring stale custom lyrics fetch result (Current playing is '\(self.trackTitle)' by '\(self.trackArtist)')")
+                    return
+                }
+                
+                self.lyricsLoading = false
+                if let lines = lines {
+                    self.lyricLines = lines
+                    self.matchedTitle = mTitle ?? query
+                    self.matchedArtist = mArtist ?? "Manual Match"
+                } else {
+                    // Custom search returned no results
+                    self.lyricLines = []
+                    self.matchedTitle = "No results"
+                    self.matchedArtist = "for '\(query)'"
+                }
+            }
+        }
+    }
+    
+    // Custom search list function to be triggered manually, returning a list of candidates
+    func triggerSearchList(query: String) {
+        guard !query.isEmpty else { return }
+        
+        self.lyricsLoading = true
+        self.searchResults = []
+        self.matchedTitle = "Searching..."
+        self.matchedArtist = "'\(query)'"
+        
+        let targetTitle = self.trackTitle
+        let targetArtist = self.trackArtist
+        
+        LyricsManager.shared.searchSyncedLyrics(query: query) { [weak self] results in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                // Prevent race conditions
+                guard targetTitle == self.trackTitle && targetArtist == self.trackArtist else {
+                    print("⚠️ Ignoring stale search list fetch result (Current playing is '\(self.trackTitle)' by '\(self.trackArtist)')")
+                    return
+                }
+                
+                self.lyricsLoading = false
+                if let results = results {
+                    self.searchResults = results
+                    if results.isEmpty {
+                        self.matchedTitle = "No results"
+                        self.matchedArtist = "for '\(query)'"
+                    } else {
+                        self.matchedTitle = "Found \(results.count) results"
+                        self.matchedArtist = "for '\(query)'"
+                    }
+                } else {
+                    self.searchResults = []
+                    self.matchedTitle = "Search failed"
+                    self.matchedArtist = "Network error"
+                }
+            }
+        }
+    }
+    
+    // Selecting and loading a specific candidate from the search results
+    func selectSearchResult(_ result: LyricSearchResult) {
+        let parsed = LyricsManager.shared.parseLRC(result.syncedLyrics)
+        if !parsed.isEmpty {
+            self.lyricLines = parsed
+            self.matchedTitle = result.trackName
+            self.matchedArtist = result.artistName
+            self.searchResults = [] // Clear search results list
+        }
     }
 }
 
@@ -108,6 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     private var currentTitle = ""
     private var currentArtist = ""
+    private var hasValidDurationFetched = false
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // 1. Create the main player window
@@ -322,16 +414,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             AppState.shared.duration = duration
         }
         
-        // If song changed, trigger asynchronous lyrics fetch
-        if title != currentTitle || artist != currentArtist {
-            currentTitle = title
-            currentArtist = artist
-            
-            AppState.shared.lyricsLoading = true
-            AppState.shared.lyricLines = []
-            AppState.shared.activeLyricIndex = nil
-            AppState.shared.matchedTitle = ""
-            AppState.shared.matchedArtist = ""
+        // If song changed or valid duration finally arrived, trigger asynchronous lyrics fetch
+        let songChanged = (title != currentTitle || artist != currentArtist)
+        
+        if (songChanged && !title.isEmpty) || (!hasValidDurationFetched && duration > 0 && !title.isEmpty) {
+            if songChanged {
+                currentTitle = title
+                currentArtist = artist
+                hasValidDurationFetched = (duration > 0)
+                
+                AppState.shared.lyricsLoading = true
+                AppState.shared.lyricLines = []
+                AppState.shared.activeLyricIndex = nil
+                AppState.shared.matchedTitle = ""
+                AppState.shared.matchedArtist = ""
+                AppState.shared.searchResults = []
+                AppState.shared.lyricsOffset = 0.0
+            } else {
+                print("🔄 Retroactively fetching lyrics with newly loaded valid duration: \(duration)s")
+                hasValidDurationFetched = true
+            }
             
             let targetTitle = title
             let targetArtist = artist
@@ -342,22 +444,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         print("⚠️ Ignoring stale lyrics fetch result for '\(targetTitle)' by '\(targetArtist)' (Current playing is '\(AppState.shared.trackTitle)' by '\(AppState.shared.trackArtist)')")
                         return
                     }
-                    AppState.shared.lyricsLoading = false
                     if let lines = lines {
+                        AppState.shared.lyricsLoading = false
                         AppState.shared.lyricLines = lines
                         AppState.shared.matchedTitle = mTitle ?? ""
                         AppState.shared.matchedArtist = mArtist ?? ""
+                    } else if songChanged {
+                        // Keep loading as true if we are expecting a retry with a valid duration
+                        if duration > 0 {
+                            AppState.shared.lyricsLoading = false
+                        }
+                    } else {
+                        AppState.shared.lyricsLoading = false
                     }
                 }
             }
         }
         
-        // If lyrics are loaded, update active line index based on playback head time
+        // If lyrics are loaded, update active line index based on playback head time + offset
         if !AppState.shared.lyricLines.isEmpty {
             let lines = AppState.shared.lyricLines
+            let adjustedTime = currentTime + AppState.shared.lyricsOffset
             var activeIndex: Int? = nil
             for (index, line) in lines.enumerated() {
-                if line.time <= currentTime {
+                if line.time <= adjustedTime {
                     activeIndex = index
                 } else {
                     break
