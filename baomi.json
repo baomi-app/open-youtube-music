@@ -1,0 +1,44 @@
+{
+  "name": "Open YouTube Music",
+  "status": "released",
+  "icon": "icon.svg",
+  "accent": { "from": "#ff004f", "to": "#ff0000" },
+  "platform": { "en": "macOS", "zh": "macOS" },
+  "tagline": {
+    "en": "A premium native macOS client for YouTube Music — fast, elegant, and native.",
+    "zh": "macOS 原生 YouTube Music 客户端。极速、优雅、原生。"
+  },
+  "description": {
+    "en": "A lightweight, high-performance native macOS client for YouTube Music built with Swift and SwiftUI. It features a complete native player control bar, system media center integration, scrollable synchronized lyrics, and automatic settings persistence. Fast single-page routing brings frictionless library navigation with zero full-page reloads.",
+    "zh": "基于 Swift and SwiftUI 原生打造的轻量、极速 macOS YouTube Music 客户端。具备独立的原生底部控制条、系统控制中心与媒体键同步、侧边栏歌词以及透明悬浮的桌面歌词秀，并支持设置的自动持久化保存。完美支持基于 WebKit 桥接的无刷新单页内跳转，让您的音乐库浏览流程丝滑无比。"
+  },
+  "features": {
+    "en": [
+      "Pure Native Player Bar: Fully hides the default web player and replaces it with a premium macOS control bar interface.",
+      "Lock Screen & Media Sync: Full support for physical play/pause, next, and previous media keys and Control Center media cards.",
+      "Double-Panel Synced Lyrics: Real-time scrolling lyrics in an Apple Music-style sidebar and a transparent floating desktop capsule.",
+      "Seamless SPA Web Navigation: Zero-refresh client-side routing when clicking interactive artist and album metadata links.",
+      "UserDefaults Auto-Persistence: Automatically saves and restores your lyrics zoom scale and panel visibility states on startup.",
+      "Built-in Web Ad Blocker: Blocks ads and trackers natively inside WebKit with zero CPU overhead."
+    ],
+    "zh": [
+      "原生底部控制条：完全隐藏网页默认播放栏，替换为符合 macOS 设计规范的原生控制界面。",
+      "系统锁屏与媒体同步：完美支持物理媒体键（播放/暂停、上一首、下一首）与控制中心媒体卡片同步。",
+      "双面板同步歌词：具备 Apple Music 风格的侧边栏滚动歌词以及透明悬浮的桌面歌词秀。",
+      "无缝单页内跳转：点击播放栏上的歌手和专辑链接时，在网页内进行无刷新单页路由跳转。",
+      "UserDefaults 自动持久化：在应用启动时自动保存和读取您的歌词缩放比例与面板显示状态。",
+      "原生广告拦截器：在 WebKit 核心中以极低 CPU 消耗直接过滤并拦截所有网页广告与追踪器。"
+    ]
+  },
+  "tech": ["Swift", "SwiftUI", "AppKit", "WebKit", "MediaPlayer"],
+  "links": [
+    {
+      "label": { "en": "Download", "zh": "下载" },
+      "href": "https://github.com/baomi-app/open-youtube-music/releases/latest/download/Open.YouTube.Music.zip"
+    },
+    {
+      "label": { "en": "GitHub", "zh": "GitHub" },
+      "href": "https://github.com/baomi-app/open-youtube-music"
+    }
+  ]
+}
