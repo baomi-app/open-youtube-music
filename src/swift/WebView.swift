@@ -101,7 +101,9 @@ struct WebView: NSViewRepresentable {
         let jsMonitor = """
         // Define global status update function
         window.updateDesktopLyricsButton = function(active) {
-            var btn = document.getElementById('desktop-lyrics-toggle-btn');
+            var playerBar = document.querySelector('ytmusic-player-bar');
+            var root = playerBar ? (playerBar.shadowRoot || playerBar) : document;
+            var btn = root.querySelector('#desktop-lyrics-toggle-btn') || document.getElementById('desktop-lyrics-toggle-btn');
             if (btn) {
                 btn.setAttribute('data-active', active ? 'true' : 'false');
                 if (active) {
@@ -121,9 +123,182 @@ struct WebView: NSViewRepresentable {
                 var playerBar = document.querySelector('ytmusic-player-bar');
                 var root = playerBar ? (playerBar.shadowRoot || playerBar) : document;
                 
+                // Resiliently sync the mini-player-active class based on window size
+                var isMiniSize = window.innerWidth > 0 && window.innerWidth <= 360;
+                if (isMiniSize) {
+                    if (!document.documentElement.classList.contains('mini-player-active')) {
+                        document.documentElement.classList.add('mini-player-active');
+                    }
+                } else {
+                    if (document.documentElement.classList.contains('mini-player-active')) {
+                        document.documentElement.classList.remove('mini-player-active');
+                    }
+                }
+
+
+                // Inject premium CSS directly into player bar shadow DOM for Mini Player mode
+                var shadowStyleId = 'ytm-mini-player-shadow-css';
+                if (document.documentElement.classList.contains('mini-player-active')) {
+                    if (playerBar && playerBar.shadowRoot && !playerBar.shadowRoot.getElementById(shadowStyleId)) {
+                        var style = document.createElement('style');
+                        style.id = shadowStyleId;
+                        style.textContent = `
+                            :host {
+                                display: flex !important;
+                                flex-direction: column !important;
+                                justify-content: space-between !important;
+                                align-items: center !important;
+                                padding: 24px 16px !important;
+                                box-sizing: border-box !important;
+                                height: 100vh !important;
+                                min-height: 100vh !important;
+                                max-height: 100vh !important;
+                                width: 100vw !important;
+                                background: rgba(10, 10, 10, 0.98) !important;
+                            }
+                            .left-content {
+                                display: flex !important;
+                                flex-direction: column !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                                width: 100% !important;
+                                flex: 1 !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                            }
+                            .left-content .image, 
+                            .left-content #thumbnail, 
+                            .left-content .thumbnail, 
+                            .left-content ytmusic-image-overlay,
+                            .left-content .image-wrapper,
+                            .left-content img {
+                                width: 160px !important;
+                                height: 160px !important;
+                                min-width: 160px !important;
+                                min-height: 160px !important;
+                                max-width: 160px !important;
+                                max-height: 160px !important;
+                                border-radius: 14px !important;
+                                box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6) !important;
+                                margin: 0 auto 16px auto !important;
+                                display: block !important;
+                                visibility: visible !important;
+                                opacity: 1 !important;
+                            }
+                            .left-content img {
+                                object-fit: cover !important;
+                            }
+                            .left-content .title-mask, 
+                            .left-content .byline {
+                                max-width: 280px !important;
+                                overflow: hidden !important;
+                                text-overflow: ellipsis !important;
+                                white-space: nowrap !important;
+                                text-align: center !important;
+                            }
+                            .left-content .title {
+                                font-size: 16px !important;
+                                font-weight: 700 !important;
+                                color: #ffffff !important;
+                                margin-bottom: 4px !important;
+                                text-align: center !important;
+                            }
+                            .left-content .byline {
+                                font-size: 13px !important;
+                                color: rgba(255, 255, 255, 0.6) !important;
+                                text-align: center !important;
+                            }
+                            .middle-content {
+                                display: flex !important;
+                                flex-direction: row !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                                width: 100% !important;
+                                margin: 12px 0 !important;
+                                padding: 0 !important;
+                            }
+                            .middle-content .playback-buttons {
+                                display: flex !important;
+                                flex-direction: row !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                            }
+                            .middle-content tp-yt-paper-icon-button,
+                            .middle-content yt-icon-button {
+                                margin: 0 12px !important;
+                                color: #ffffff !important;
+                                opacity: 0.8 !important;
+                                transition: all 0.2s ease !important;
+                            }
+                            .middle-content tp-yt-paper-icon-button:hover,
+                            .middle-content yt-icon-button:hover {
+                                opacity: 1 !important;
+                                transform: scale(1.1) !important;
+                            }
+                            #play-pause-button {
+                                background: #ffffff !important;
+                                color: #000000 !important;
+                                border-radius: 50% !important;
+                                width: 44px !important;
+                                height: 44px !important;
+                                padding: 8px !important;
+                                opacity: 1 !important;
+                                display: inline-flex !important;
+                                align-items: center !important;
+                                justify-content: center !important;
+                                box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3) !important;
+                            }
+                            .right-content {
+                                position: absolute !important;
+                                top: 12px !important;
+                                right: 12px !important;
+                                width: auto !important;
+                                flex-direction: row !important;
+                                z-index: 100 !important;
+                                display: flex !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                            }
+                            .right-content > *:not(.expand-button):not(#expand-button) {
+                                display: none !important;
+                            }
+                            .right-content .expand-button,
+                            .right-content #expand-button {
+                                display: inline-flex !important;
+                                color: #ffffff !important;
+                                opacity: 0.6 !important;
+                                cursor: pointer !important;
+                                transition: opacity 0.2s ease !important;
+                            }
+                            .right-content .expand-button:hover,
+                            .right-content #expand-button:hover {
+                                opacity: 1 !important;
+                            }
+                            #progress-bar, 
+                            tp-yt-paper-slider, 
+                            .slider-container {
+                                position: absolute !important;
+                                bottom: 0 !important;
+                                left: 0 !important;
+                                width: 100% !important;
+                                height: 4px !important;
+                                padding: 0 !important;
+                                margin: 0 !important;
+                            }
+                        `;
+                        playerBar.shadowRoot.appendChild(style);
+                    }
+                } else {
+                    if (playerBar && playerBar.shadowRoot) {
+                        var existingStyle = playerBar.shadowRoot.getElementById(shadowStyleId);
+                        if (existingStyle) {
+                            existingStyle.remove();
+                        }
+                    }
+                }
 
                 
-                var btn = document.getElementById('desktop-lyrics-toggle-btn');
+                var btn = root.querySelector('#desktop-lyrics-toggle-btn') || document.getElementById('desktop-lyrics-toggle-btn');
                 var rightControls = root.querySelector('.right-controls-buttons') || 
                                     root.querySelector('#right-controls') || 
                                     root.querySelector('.right-controls') ||
@@ -161,12 +336,52 @@ struct WebView: NSViewRepresentable {
                         svg.setAttribute('viewBox', '0 0 24 24');
                         svg.setAttribute('width', '22');
                         svg.setAttribute('height', '22');
-                        svg.style.fill = 'currentColor';
+                        svg.setAttribute('fill', 'none');
+                        svg.setAttribute('stroke', 'currentColor');
+                        svg.setAttribute('stroke-width', '2');
+                        svg.setAttribute('stroke-linecap', 'round');
+                        svg.setAttribute('stroke-linejoin', 'round');
                         
-                        var svgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                        svgPath.setAttribute('d', 'M20 3H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6v2H8v2h8v-2h-2v-2h6c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12H4V5h16v10zM6 7h12v2H6zm0 4h8v2H6z');
+                        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.setAttribute('cx', '7');
+                        circle.setAttribute('cy', '16');
+                        circle.setAttribute('r', '2');
+                        circle.setAttribute('fill', 'currentColor');
+                        circle.setAttribute('stroke', 'none');
+                        svg.appendChild(circle);
                         
-                        svg.appendChild(svgPath);
+                        var stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        stem.setAttribute('x1', '8');
+                        stem.setAttribute('y1', '16');
+                        stem.setAttribute('x2', '8');
+                        stem.setAttribute('y2', '6');
+                        svg.appendChild(stem);
+                        
+                        var flag = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        flag.setAttribute('d', 'M8 6c3 0 4 1.5 5 3');
+                        svg.appendChild(flag);
+                        
+                        var line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line1.setAttribute('x1', '13');
+                        line1.setAttribute('y1', '8');
+                        line1.setAttribute('x2', '20');
+                        line1.setAttribute('y2', '8');
+                        svg.appendChild(line1);
+                        
+                        var line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line2.setAttribute('x1', '13');
+                        line2.setAttribute('y1', '12');
+                        line2.setAttribute('x2', '20');
+                        line2.setAttribute('y2', '12');
+                        svg.appendChild(line2);
+                        
+                        var line3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line3.setAttribute('x1', '13');
+                        line3.setAttribute('y1', '16');
+                        line3.setAttribute('x2', '18');
+                        line3.setAttribute('y2', '16');
+                        svg.appendChild(line3);
+                        
                         newBtn.appendChild(svg);
                         
                         newBtn.addEventListener('mouseenter', function() {
@@ -190,6 +405,59 @@ struct WebView: NSViewRepresentable {
                         window.webkit.messageHandlers.YTMBridge.postMessage({
                             event: "syncDesktopLyricsButton"
                         });
+                    } else {
+                        // Defensive update: If the button exists but doesn't have the new music note style, replace it with the new SVG design
+                        var existingSvg = btn.querySelector('svg');
+                        if (existingSvg && !existingSvg.querySelector('circle')) {
+                            while (existingSvg.firstChild) {
+                                existingSvg.removeChild(existingSvg.firstChild);
+                            }
+                            existingSvg.setAttribute('fill', 'none');
+                            existingSvg.setAttribute('stroke', 'currentColor');
+                            existingSvg.setAttribute('stroke-width', '2');
+                            existingSvg.setAttribute('stroke-linecap', 'round');
+                            existingSvg.setAttribute('stroke-linejoin', 'round');
+                            
+                            var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                            circle.setAttribute('cx', '7');
+                            circle.setAttribute('cy', '16');
+                            circle.setAttribute('r', '2');
+                            circle.setAttribute('fill', 'currentColor');
+                            circle.setAttribute('stroke', 'none');
+                            existingSvg.appendChild(circle);
+                            
+                            var stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            stem.setAttribute('x1', '8');
+                            stem.setAttribute('y1', '16');
+                            stem.setAttribute('x2', '8');
+                            stem.setAttribute('y2', '6');
+                            existingSvg.appendChild(stem);
+                            
+                            var flag = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                            flag.setAttribute('d', 'M8 6c3 0 4 1.5 5 3');
+                            existingSvg.appendChild(flag);
+                            
+                            var line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line1.setAttribute('x1', '13');
+                            line1.setAttribute('y1', '8');
+                            line1.setAttribute('x2', '20');
+                            line1.setAttribute('y2', '8');
+                            existingSvg.appendChild(line1);
+                            
+                            var line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line2.setAttribute('x1', '13');
+                            line2.setAttribute('y1', '12');
+                            line2.setAttribute('x2', '20');
+                            line2.setAttribute('y2', '12');
+                            existingSvg.appendChild(line2);
+                            
+                            var line3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line3.setAttribute('x1', '13');
+                            line3.setAttribute('y1', '16');
+                            line3.setAttribute('x2', '18');
+                            line3.setAttribute('y2', '16');
+                            existingSvg.appendChild(line3);
+                        }
                     }
                     
                     // Periodic debugging log for container children
@@ -296,6 +564,31 @@ struct WebView: NSViewRepresentable {
                 }
             }
         });
+
+        // Intercept double-clicks anywhere in the viewport to toggle/exit Mini Player mode
+        document.addEventListener('dblclick', function(e) {
+            if (document.documentElement.classList.contains('mini-player-active')) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.webkit.messageHandlers.YTMBridge.postMessage({
+                    event: "toggleMiniPlayer"
+                });
+            }
+        });
+
+        // Intercept clicks on the web player expand buttons in Mini Player mode to exit natively
+        document.addEventListener('click', function(e) {
+            if (document.documentElement.classList.contains('mini-player-active')) {
+                var expandBtn = e.target.closest('.expand-button') || e.target.closest('#expand-button');
+                if (expandBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.webkit.messageHandlers.YTMBridge.postMessage({
+                        event: "toggleMiniPlayer"
+                    });
+                }
+            }
+        }, true);
         """
         let monitorScript = WKUserScript(source: jsMonitor, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         userContentController.addUserScript(monitorScript)
@@ -328,6 +621,30 @@ struct WebView: NSViewRepresentable {
             if let command = notification.object as? String {
                 self.executeCommand(command, on: webView)
             }
+        }
+        
+        // Register observer to toggle the web player page (Now Playing)
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ToggleWebPlayerPage"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            let js = """
+            (function() {
+                var playerBar = document.querySelector('ytmusic-player-bar');
+                if (playerBar) {
+                    var expandBtn = playerBar.querySelector('.expand-button') || playerBar.querySelector('#expand-button');
+                    if (expandBtn) {
+                        expandBtn.click();
+                        return true;
+                    }
+                    playerBar.click();
+                    return true;
+                }
+                return false;
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
         
         // Register observer to jump/seek to specific time click on lyrics!
@@ -513,6 +830,10 @@ struct WebView: NSViewRepresentable {
                         let active = AppState.shared.showDesktopLyrics
                         let js = "if (window.updateDesktopLyricsButton) { window.updateDesktopLyricsButton(\(active)); }"
                         message.webView?.evaluateJavaScript(js, completionHandler: nil)
+                    }
+                } else if event == "toggleMiniPlayer" {
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: NSNotification.Name("ToggleMiniPlayer"), object: nil)
                     }
                 }
                 return

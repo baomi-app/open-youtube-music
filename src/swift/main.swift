@@ -6,6 +6,7 @@ class AppState: ObservableObject {
     static let shared = AppState()
     
     @Published var isMiniPlayer = false
+    @Published var isTransitioning = false
     
     // Lyrics States
     @Published var showSidebarLyrics: Bool {
@@ -48,30 +49,52 @@ class AppState: ObservableObject {
     }
 }
 
-// SwiftUI Content Root View
 struct ContentView: View {
     @ObservedObject var state = AppState.shared
     
     var body: some View {
-        HStack(spacing: 0) {
+        ZStack {
+            // Main Player Layout (WebView + Player Bar + Sidebar Lyrics)
+            // Kept mounted at all times to prevent state reset or WKWebView recreation
             VStack(spacing: 0) {
-                WebView(
-                    url: URL(string: "https://music.youtube.com/")!,
-                    isMiniPlayer: $state.isMiniPlayer
-                )
-                .edgesIgnoringSafeArea(.all)
-                
-                if !state.isMiniPlayer {
-                    NativePlayerBarView()
+                ZStack(alignment: .bottom) {
+                    WebView(
+                        url: URL(string: "https://music.youtube.com/")!,
+                        isMiniPlayer: $state.isMiniPlayer
+                    )
+                    .edgesIgnoringSafeArea(.all)
+                    
+                    if state.showSidebarLyrics && !state.isMiniPlayer {
+                        HStack(spacing: 0) {
+                            Spacer()
+                            SidebarLyricsView()
+                                .frame(width: 320)
+                                .padding(.top, 64)
+                                .padding(.bottom, 0)
+                        }
+                        .transition(.move(edge: .trailing))
+                    }
                 }
+                
+                NativePlayerBarView()
+                    .frame(height: state.isMiniPlayer ? 0 : 68)
+                    .opacity(state.isMiniPlayer ? 0 : 1)
+                    .clipped()
             }
-            .edgesIgnoringSafeArea(.all)
+            .opacity(state.isMiniPlayer ? 0 : (state.isTransitioning ? 0.3 : 1))
+            .animation(.easeInOut(duration: 0.15), value: state.isMiniPlayer)
+            .animation(.easeInOut(duration: 0.15), value: state.isTransitioning)
+            .disabled(state.isMiniPlayer)
             
-            // Side lyrics panel in Apple Music style
-            if state.showSidebarLyrics && !state.isMiniPlayer {
-                SidebarLyricsView()
+            // Native Mini Player View overlay
+            if state.isMiniPlayer || state.isTransitioning {
+                NativeMiniPlayerView()
+                    .opacity(state.isTransitioning ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.15), value: state.isTransitioning)
+                    .transition(.opacity)
             }
         }
+        .edgesIgnoringSafeArea(.all)
     }
 }
 
@@ -147,19 +170,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         // 9. Setup standard macOS Menu Bar (Enables standard Cmd+C, Cmd+V hotkeys)
         setupMainMenu()
-        
-        // 10. Automatically trigger visual snapshot for AI diagnosis
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
-            print("📸 Diagnostic: Triggering automatic TakeSnapshot...")
-            NotificationCenter.default.post(name: NSNotification.Name("TakeSnapshot"), object: nil)
-        }
     }
     
     private func createDesktopLyricsWindow() {
-        // Transparent, borderless, floating window
-        let lyricsWindow = NSWindow(
+        // Transparent, borderless, floating panel that doesn't activate the parent app on click
+        let lyricsWindow = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 160),
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -345,21 +362,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     func toggleMiniPlayer() {
-        AppState.shared.isMiniPlayer.toggle()
-        
         if AppState.shared.isMiniPlayer {
-            // Save normal size
-            normalBounds = window.frame
+            // 1. Exiting Mini Player: Start transition & restore normal window size FIRST
+            AppState.shared.isTransitioning = true
+            AppState.shared.isMiniPlayer = false // Toggle state instantly to show full layout
             
-            // Transform into tiny floating widget
-            window.level = .floating
-            window.setFrame(NSRect(x: window.frame.origin.x, y: window.frame.origin.y, width: 340, height: 340), display: true, animate: true)
-            window.aspectRatio = NSSize(width: 1, height: 1)
-        } else {
-            // Restore normal window
             window.level = .normal
             window.aspectRatio = NSSize(width: 0, height: 0) // unlock aspect ratio
-            window.setFrame(normalBounds, display: true, animate: true)
+            window.setFrame(normalBounds, display: true, animate: false)
+            
+            // 2. Instantly unhide the webpage elements in WebKit
+            let js = "document.documentElement.classList.remove('mini-player-active');"
+            WebView.sharedWebView?.evaluateJavaScript(js, completionHandler: nil)
+            
+            // 3. Let the NativeMiniPlayerView fade out for 150ms, then turn off transitioning flag
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                AppState.shared.isTransitioning = false
+            }
+        } else {
+            // 1. Entering Mini Player: Toggle the state first so SwiftUI prepares the mini layout
+            AppState.shared.isMiniPlayer = true
+            
+            // 2. Save normal size
+            normalBounds = window.frame
+            
+            // 3. Resize window instantly
+            window.level = .floating
+            window.setFrame(NSRect(x: window.frame.origin.x, y: window.frame.origin.y, width: 340, height: 340), display: true, animate: false)
+            window.aspectRatio = NSSize(width: 1, height: 1)
         }
     }
     
@@ -452,6 +482,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 // -------------------------------------------------------------
 // Pure Swift App Bootstrap Entry Point
 // -------------------------------------------------------------
+setbuf(stdout, nil)
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

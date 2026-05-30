@@ -14,13 +14,8 @@ class TrayManager: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let button = statusItem.button {
-            // Use native macOS crisp SF Symbol that automatically shifts colors on dark/light menu bars
-            if let image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "YouTube Music") {
-                image.isTemplate = true // ensures perfect blending with macOS dark/light menu bar
-                button.image = image
-            } else {
-                button.title = "🎵"
-            }
+            // Draw a gorgeous custom YouTube Music concentric-circle play logo (pixel-perfect vector)
+            button.image = createTrayIcon()
         }
         
         setupMenu()
@@ -180,5 +175,44 @@ class TrayManager: NSObject {
     
     @objc private func menuQuit() {
         NSApplication.shared.terminate(nil)
+    }
+    
+    private func createTrayIcon() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            
+            // 1. Draw solid outer circle (filled)
+            context.setBlendMode(.normal)
+            let outerPath = CGMutablePath()
+            outerPath.addArc(center: center, radius: 8.0, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+            context.addPath(outerPath)
+            context.setFillColor(NSColor.black.cgColor)
+            context.fillPath()
+            
+            // 2. Erase the inner circle to create a transparent gap (cutout)
+            context.setBlendMode(.clear)
+            let innerPath = CGMutablePath()
+            innerPath.addArc(center: center, radius: 5.5, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+            context.addPath(innerPath)
+            context.fillPath()
+            
+            // 3. Draw the solid center play triangle
+            context.setBlendMode(.normal)
+            let triPath = CGMutablePath()
+            triPath.move(to: CGPoint(x: center.x - 1.3, y: center.y + 2.2))
+            triPath.addLine(to: CGPoint(x: center.x - 1.3, y: center.y - 2.2))
+            triPath.addLine(to: CGPoint(x: center.x + 2.5, y: center.y))
+            triPath.closeSubpath()
+            context.addPath(triPath)
+            context.setFillColor(NSColor.black.cgColor)
+            context.fillPath()
+            
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }

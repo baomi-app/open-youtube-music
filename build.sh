@@ -10,6 +10,9 @@ CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
+echo "🛑 Terminating any running instance of $APP_NAME..."
+killall "openytmusic" 2>/dev/null || true
+
 echo "🧹 Cleaning previous build..."
 rm -rf "$BUILD_DIR"
 
@@ -93,4 +96,4 @@ echo "🔒 Applying local ad-hoc code signature..."
 codesign --force --deep --sign - "$APP_BUNDLE"
 echo "📍 App Bundle Location: $APP_BUNDLE"
 echo "⭐ Launching $APP_NAME..."
-open "$APP_BUNDLE"
+open -n "$APP_BUNDLE"
