@@ -30,6 +30,10 @@ struct LyricSearchResult: Identifiable, Equatable, Hashable {
 class LyricsManager {
     static let shared = LyricsManager()
     
+    private func setupUserAgent(on request: inout URLRequest) {
+        request.setValue("Open-YouTube-Music-macOS/1.0.5 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
+    }
+    
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
     func parseLRC(_ lrcText: String) -> [LyricLine] {
         var lines: [LyricLine] = []
@@ -309,6 +313,7 @@ class LyricsManager {
         }
         
         var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
         request.timeoutInterval = 4.0 // Fast timeout
         
         URLSession.shared.dataTask(with: request) { data, _, error in
@@ -359,6 +364,7 @@ class LyricsManager {
         }
         
         var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
         request.timeoutInterval = 8.0
         
         print("🔍 Searching synced lyrics list for Query='\(query)'")
@@ -513,6 +519,7 @@ class LyricsManager {
         }
         
         var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
         request.timeoutInterval = 6.0
         
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
@@ -553,6 +560,7 @@ class LyricsManager {
         }
         
         var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
         request.timeoutInterval = 8.0
         
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
