@@ -204,10 +204,12 @@ class NowPlayingManager: NSObject, UNUserNotificationCenterDelegate {
             
             // Safe cleanup of temporary artwork file on completion
             if let tempURL = tempURL {
-                do {
-                    try FileManager.default.removeItem(at: tempURL)
-                } catch {
-                    print("Error removing temporary artwork file: \(error)")
+                if FileManager.default.fileExists(atPath: tempURL.path) {
+                    do {
+                        try FileManager.default.removeItem(at: tempURL)
+                    } catch {
+                        print("Error removing temporary artwork file: \(error)")
+                    }
                 }
             }
         }

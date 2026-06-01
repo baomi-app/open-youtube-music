@@ -1040,7 +1040,13 @@ struct WebView: NSViewRepresentable {
             
             // 1. Handle debug messages and return immediately to prevent wiping out track info
             if let debugMsg = dict["debug"] as? String {
-                print("🐞 JS Debug: \(debugMsg)")
+                // Suppress high-frequency JavaScript polling and DOM structure logs to keep the logs clean and readable
+                let isRepetitive = debugMsg.contains("[Bridge Send]") ||
+                                   debugMsg.contains("Container children:") ||
+                                   debugMsg.contains("style-scope")
+                if !isRepetitive {
+                    print("🐞 JS Debug: \(debugMsg)")
+                }
                 return
             }
             

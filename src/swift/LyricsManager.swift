@@ -31,7 +31,7 @@ class LyricsManager {
     static let shared = LyricsManager()
     
     private func setupUserAgent(on request: inout URLRequest) {
-        request.setValue("Open-YouTube-Music-macOS/1.0.5 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Open-YouTube-Music-macOS/1.0.7 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
     }
     
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
@@ -200,7 +200,7 @@ class LyricsManager {
         }
     }
 
-    // Fetch synced lyrics from LrcLib with resilient waterfall search and dynamic translation
+    // Fetch synced lyrics with Netease Cloud Music priority and resilient LrcLib/iTunes waterfall failover
     func fetchSyncedLyrics(title: String, artist: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         guard !title.isEmpty else {
             completion(nil, nil, nil)
@@ -211,8 +211,24 @@ class LyricsManager {
         let cleanedArtist = cleanArtist(artist)
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
 
-        print("🔍 Syncing lyrics waterfall started: Title='\(title)' -> '\(cleanedTitle)', Artist='\(artist)' -> '\(cleanedArtist)', Duration=\(durationSec)s")
+        print("🔍 Syncing lyrics: Querying Netease Cloud Music first...")
+        self.tryNeteaseLyrics(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
+            if let lines = lines, !lines.isEmpty {
+                completion(lines, mTitle, mArtist)
+                return
+            }
 
+            guard let self = self else {
+                completion(nil, nil, nil)
+                return
+            }
+
+            print("⚠️ Netease returned no synced lyrics. Falling back to LrcLib waterfall flow...")
+            self.executeLrcLibWaterfall(title: title, artist: artist, cleanedTitle: cleanedTitle, cleanedArtist: cleanedArtist, durationSec: durationSec, completion: completion)
+        }
+    }
+
+    private func executeLrcLibWaterfall(title: String, artist: String, cleanedTitle: String, cleanedArtist: String, durationSec: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         // Split bilingual titles (e.g. "爱情的重量 - The Weight of Love")
         let titleParts = splitBilingualTitle(cleanedTitle)
         if !titleParts.isEmpty {
@@ -243,6 +259,194 @@ class LyricsManager {
                 self.runWaterfallAndITunesTranslation(title: cleanedTitle, artist: cleanedArtist, duration: durationSec, completion: completion)
             }
         }
+    }
+
+    // Fetch lyrics from Netease Cloud Music with automatic bilingual pairing
+    private func tryNeteaseLyrics(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        let cleanT = cleanTitle(title)
+        let cleanA = cleanArtist(artist)
+        let query = artist.isEmpty ? cleanT : "\(cleanT) \(cleanA)"
+
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            completion(nil, nil, nil)
+            return
+        }
+
+        let urlString = "https://music.163.com/api/search/get/web?s=\(encodedQuery)&type=1&limit=5"
+        guard let url = URL(string: urlString) else {
+            completion(nil, nil, nil)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
+        request.timeoutInterval = 5.0
+
+        print("🔍 Netease: Searching for '\(query)'")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self, let data = data, error == nil else {
+                print("✗ Netease: Search request failed or timed out.")
+                completion(nil, nil, nil)
+                return
+            }
+
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let result = json["result"] as? [String: Any],
+                   let songs = result["songs"] as? [[String: Any]] {
+
+                    var matchedCandidates: [[String: Any]] = []
+
+                    // Filter candidates based on title/artist matching and duration proximity
+                    for song in songs {
+                        guard let _ = song["id"] as? Int,
+                              let songName = song["name"] as? String else { continue }
+
+                        let candDurationMs = song["duration"] as? Int ?? 0
+                        let candDurationSec = candDurationMs / 1000
+
+                        // Check duration proximity (within 15 seconds if we have a valid input duration)
+                        if duration > 0 && candDurationSec > 0 {
+                            if abs(candDurationSec - duration) > 15 {
+                                continue
+                            }
+                        }
+
+                        // Check title match (case insensitive, ignoring simplified/traditional variance)
+                        let lowerTarget = cleanT.lowercased()
+                        let tradTarget = self.toTraditional(lowerTarget)
+                        let simpTarget = self.toSimplified(lowerTarget)
+
+                        // We also clean the candidate name before comparison to remove extra brackets
+                        let cleanedCandName = self.cleanTitle(songName).lowercased()
+
+                        let isTitleMatch = cleanedCandName.contains(lowerTarget) ||
+                                           cleanedCandName.contains(tradTarget) ||
+                                           cleanedCandName.contains(simpTarget) ||
+                                           lowerTarget.contains(cleanedCandName) ||
+                                           tradTarget.contains(cleanedCandName) ||
+                                           simpTarget.contains(cleanedCandName)
+
+                        if isTitleMatch {
+                            matchedCandidates.append(song)
+                        }
+                    }
+
+                    // If no title match found, but we have search results, use all search results as loose candidates
+                    if matchedCandidates.isEmpty {
+                        matchedCandidates = songs
+                    }
+
+                    self.tryFetchNeteaseLyrics(candidates: matchedCandidates, index: 0, targetArtist: cleanA, targetTitle: cleanT, completion: completion)
+                    return
+                }
+            } catch {
+                print("✗ Netease: Failed to parse search JSON: \(error)")
+            }
+            completion(nil, nil, nil)
+        }.resume()
+    }
+
+    private func tryFetchNeteaseLyrics(candidates: [[String: Any]], index: Int, targetArtist: String, targetTitle: String, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        guard index < candidates.count else {
+            completion(nil, nil, nil)
+            return
+        }
+
+        let song = candidates[index]
+        guard let songId = song["id"] as? Int,
+              let trackName = song["name"] as? String else {
+            tryFetchNeteaseLyrics(candidates: candidates, index: index + 1, targetArtist: targetArtist, targetTitle: targetTitle, completion: completion)
+            return
+        }
+
+        let artists = song["artists"] as? [[String: Any]] ?? []
+        let artistName = (artists.first?["name"] as? String) ?? targetArtist
+
+        print("🔍 Netease: Attempting candidate \(index + 1)/\(candidates.count): ID \(songId) ('\(trackName)' by '\(artistName)')")
+        self.fetchNeteaseLyricsById(songId: songId, trackName: trackName, artistName: artistName) { [weak self] lines, mTitle, mArtist in
+            if let lines = lines, !lines.isEmpty {
+                completion(lines, mTitle, mArtist)
+            } else {
+                guard let self = self else { completion(nil, nil, nil); return }
+                print("⚠️ Netease: Candidate \(songId) had no synced lyrics. Trying next candidate...")
+                self.tryFetchNeteaseLyrics(candidates: candidates, index: index + 1, targetArtist: targetArtist, targetTitle: targetTitle, completion: completion)
+            }
+        }
+    }
+
+    private func fetchNeteaseLyricsById(songId: Int, trackName: String, artistName: String, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        let urlString = "https://music.163.com/api/song/lyric?os=pc&id=\(songId)&lv=-1&kv=-1&tv=-1"
+        guard let url = URL(string: urlString) else {
+            completion(nil, nil, nil)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
+        request.timeoutInterval = 5.0
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self, let data = data, error == nil else {
+                print("✗ Netease: Failed to fetch lyrics for ID \(songId)")
+                completion(nil, nil, nil)
+                return
+            }
+
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let lrcDict = json["lrc"] as? [String: Any]
+                    let lyricText = lrcDict?["lyric"] as? String ?? ""
+
+                    let tlyricDict = json["tlyric"] as? [String: Any]
+                    let transText = tlyricDict?["lyric"] as? String ?? ""
+
+                    if lyricText.isEmpty {
+                        print("✗ Netease: Synced lyrics are empty for ID \(songId)")
+                        completion(nil, nil, nil)
+                        return
+                    }
+
+                    let baseLines = self.parseLRC(lyricText)
+                    if baseLines.isEmpty {
+                        completion(nil, nil, nil)
+                        return
+                    }
+
+                    let transLines = self.parseLRC(transText)
+                    if transLines.isEmpty {
+                        // Return base lines directly if no translations are present
+                        print("✓ Netease: Loaded \(baseLines.count) lines of original lyrics (No translation).")
+                        completion(baseLines, trackName, artistName)
+                        return
+                    }
+
+                    // Merge original lyrics with translated lyrics based on timestamp proximity
+                    var mergedLines: [LyricLine] = []
+                    for line in baseLines {
+                        // Find matching translation line within 0.15s threshold
+                        if let matchedTrans = transLines.first(where: { abs($0.time - line.time) < 0.15 }) {
+                            let trimmedTrans = matchedTrans.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmedTrans.isEmpty {
+                                let combinedText = "\(line.text)\n\(trimmedTrans)"
+                                mergedLines.append(LyricLine(time: line.time, text: combinedText))
+                            } else {
+                                mergedLines.append(line)
+                            }
+                        } else {
+                            mergedLines.append(line)
+                        }
+                    }
+
+                    print("✓ Netease: Successfully loaded & paired \(mergedLines.count) bilingual lines.")
+                    completion(mergedLines, trackName, artistName)
+                    return
+                }
+            } catch {
+                print("✗ Netease: Failed to parse lyrics JSON: \(error)")
+            }
+            completion(nil, nil, nil)
+        }.resume()
     }
 
 
@@ -338,7 +542,7 @@ class LyricsManager {
         }.resume()
     }
 
-    // Custom manual search for synced lyrics bypassing strict matching rules
+    // Custom manual search for synced lyrics bypassing strict matching rules with Netease priority
     func fetchSyncedLyricsCustom(query: String, duration: TimeInterval, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         guard !query.isEmpty else {
             completion(nil, nil, nil)
@@ -346,7 +550,21 @@ class LyricsManager {
         }
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
         print("🔍 Custom synced lyrics search started: Query='\(query)', Duration=\(durationSec)s")
-        tryKeywordSearch(query: query, duration: durationSec, targetArtist: "", targetTitle: "", strictArtistCheck: false, strictTitleCheck: false, completion: completion)
+
+        self.tryNeteaseLyrics(title: query, artist: "", duration: durationSec) { [weak self] lines, mTitle, mArtist in
+            if let lines = lines, !lines.isEmpty {
+                completion(lines, mTitle, mArtist)
+                return
+            }
+
+            guard let self = self else {
+                completion(nil, nil, nil)
+                return
+            }
+
+            print("⚠️ Custom search on Netease returned no lyrics. Falling back to LrcLib...")
+            self.tryKeywordSearch(query: query, duration: durationSec, targetArtist: "", targetTitle: "", strictArtistCheck: false, strictTitleCheck: false, completion: completion)
+        }
     }
 
     // Search synced lyrics from LrcLib returning all matching candidates
@@ -370,6 +588,11 @@ class LyricsManager {
         print("🔍 Searching synced lyrics list for Query='\(query)'")
         URLSession.shared.dataTask(with: request) { data, _, error in
             guard let data = data, error == nil else {
+                completion(nil)
+                return
+            }
+            
+            if LyricsManager.shared.checkHTMLBlock(data, from: urlString) {
                 completion(nil)
                 return
             }
@@ -528,6 +751,11 @@ class LyricsManager {
                 return
             }
             
+            if self.checkHTMLBlock(data, from: urlString) {
+                completion(nil, nil, nil)
+                return
+            }
+            
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                 completion(nil, nil, nil)
                 return
@@ -565,6 +793,11 @@ class LyricsManager {
         
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self, let data = data, error == nil else {
+                completion(nil, nil, nil)
+                return
+            }
+            
+            if self.checkHTMLBlock(data, from: urlString) {
                 completion(nil, nil, nil)
                 return
             }
@@ -726,6 +959,17 @@ class LyricsManager {
             }
             completion(nil, nil, nil)
         }.resume()
+    }
+
+    private func checkHTMLBlock(_ data: Data, from urlString: String) -> Bool {
+        if let text = String(data: data, encoding: .utf8) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if trimmed.hasPrefix("<!doctype") || trimmed.hasPrefix("<html") || trimmed.contains("cloudflare") {
+                print("⚠️ LrcLib: Request to '\(urlString)' returned HTML instead of JSON (blocked or hijacked).")
+                return true
+            }
+        }
+        return false
     }
 }
 

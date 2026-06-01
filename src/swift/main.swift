@@ -279,6 +279,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hasValidDurationFetched = false
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // Redirect standard output to ~/Library/Logs/Open YouTube Music/openytmusic.log on launch
+        redirectStandardOutput()
+        
         // 1. Create the main player window
         window = NSWindow(
             contentRect: normalBounds,
@@ -663,6 +666,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         windowMenu.addItem(NSMenuItem.separator())
         windowMenu.addItem(NSMenuItem(title: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
         
+        // Help Menu
+        let helpMenu = NSMenu(title: "Help")
+        let helpMenuItem = NSMenuItem()
+        helpMenuItem.submenu = helpMenu
+        mainMenu.addItem(helpMenuItem)
+        
+        let showLogsItem = NSMenuItem(title: "Show Synced Lyrics Logs", action: #selector(showDebugLogs), keyEquivalent: "")
+        showLogsItem.target = self
+        helpMenu.addItem(showLogsItem)
+        
         NSApplication.shared.mainMenu = mainMenu
     }
     
@@ -676,6 +689,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow()
         return true
+    }
+    
+    private func redirectStandardOutput() {
+        let fileManager = FileManager.default
+        let logDir = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first!.appendingPathComponent("Logs/Open YouTube Music")
+        try? fileManager.createDirectory(at: logDir, withIntermediateDirectories: true, attributes: nil)
+        
+        let logFileURL = logDir.appendingPathComponent("openytmusic.log")
+        let logFilePath = logFileURL.path
+        
+        // Truncate logs on clean launch to keep file size lightweight
+        freopen(logFilePath, "w", stdout)
+        freopen(logFilePath, "w", stderr)
+        
+        // CRITICAL: freopen resets stream buffering! Disable buffering again on the new stdout/stderr streams
+        // to guarantee that print statements are flushed and written to disk in real-time!
+        setbuf(stdout, nil)
+        setbuf(stderr, nil)
+        
+        print("--- Log Redirected to \(logFilePath) ---")
+    }
+    
+    @objc private func showDebugLogs() {
+        let logDir = fileManagerLogsURL()
+        let logFileURL = logDir.appendingPathComponent("openytmusic.log")
+        
+        // Open the log file natively using macOS Console / default viewer
+        NSWorkspace.shared.open(logFileURL)
+    }
+    
+    private func fileManagerLogsURL() -> URL {
+        return FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!.appendingPathComponent("Logs/Open YouTube Music")
     }
 }
 
