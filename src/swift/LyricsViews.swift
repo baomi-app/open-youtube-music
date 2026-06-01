@@ -631,8 +631,45 @@ struct NativePlayerBarView: View {
             }
             .frame(maxWidth: .infinity)
             
-            // Right Component: App Lyrics Panels Toggles
-            HStack(spacing: 20) {
+            // Right Component: Volume & App Lyrics Panels Toggles
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Button(action: {
+                        state.isMuted.toggle()
+                        NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                    }) {
+                        Image(systemName: state.isMuted ? "speaker.slash.fill" : (state.volume == 0 ? "speaker.fill" : (state.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.2.fill")))
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(state.isMuted ? state.loc("Unmute") : state.loc("Mute"))
+                    
+                    Slider(
+                        value: Binding(
+                            get: { state.isMuted ? 0.0 : state.volume },
+                            set: { newValue in
+                                if state.isMuted {
+                                    state.isMuted = false
+                                }
+                                state.volume = newValue
+                                NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                            }
+                        ),
+                        in: 0...1,
+                        onEditingChanged: { editing in
+                            state.isDraggingVolume = editing
+                            if !editing {
+                                NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                            }
+                        }
+                    )
+                    .frame(width: 70)
+                    .accentColor(.red)
+                    .controlSize(.mini)
+                }
+                .padding(.trailing, 8)
+                
                 Button(action: {
                     NotificationCenter.default.post(name: NSNotification.Name("ToggleMiniPlayer"), object: nil)
                 }) {
@@ -924,6 +961,43 @@ struct NativeMiniPlayerView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.bottom, 6)
+                
+                // Centered Sleek Volume Control
+                HStack(spacing: 6) {
+                    Button(action: {
+                        state.isMuted.toggle()
+                        NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                    }) {
+                        Image(systemName: state.isMuted ? "speaker.slash.fill" : (state.volume == 0 ? "speaker.fill" : (state.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.2.fill")))
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Slider(
+                        value: Binding(
+                            get: { state.isMuted ? 0.0 : state.volume },
+                            set: { newValue in
+                                if state.isMuted {
+                                    state.isMuted = false
+                                }
+                                state.volume = newValue
+                                NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                            }
+                        ),
+                        in: 0...1,
+                        onEditingChanged: { editing in
+                            state.isDraggingVolume = editing
+                            if !editing {
+                                NotificationCenter.default.post(name: NSNotification.Name("VolumeChanged"), object: nil)
+                            }
+                        }
+                    )
+                    .accentColor(.red)
+                    .controlSize(.mini)
+                }
+                .frame(width: 120)
                 .padding(.bottom, 16)
             }
         }

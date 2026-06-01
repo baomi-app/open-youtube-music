@@ -99,6 +99,9 @@ struct WebView: NSViewRepresentable {
         
         // 4. Inject Playback Monitor JS (streams currentTime and duration for synced lyrics, and injects custom player buttons)
         let jsMonitor = """
+        window.appVolume = \(AppState.shared.volume);
+        window.appMuted = \(AppState.shared.isMuted ? "true" : "false");
+
         // Define global status update function
         window.updateDesktopLyricsButton = function(active) {
             var playerBar = document.querySelector('ytmusic-player-bar');
@@ -581,6 +584,14 @@ struct WebView: NSViewRepresentable {
                 }
                 
                 var video = document.querySelector('video');
+                if (video && typeof window.appVolume !== 'undefined') {
+                    if (video.volume !== window.appVolume) {
+                        video.volume = window.appVolume;
+                    }
+                    if (video.muted !== window.appMuted) {
+                        video.muted = window.appMuted;
+                    }
+                }
                 var currentTime = video && !isNaN(video.currentTime) ? video.currentTime : 0;
                 var duration = video && !isNaN(video.duration) ? video.duration : 0;
                 
@@ -889,6 +900,18 @@ struct WebView: NSViewRepresentable {
                 let js = "var video = document.querySelector('video'); if (video) { video.currentTime = \(time); }"
                 webView.evaluateJavaScript(js, completionHandler: nil)
             }
+        }
+        
+        // Register observer to change volume of the video element
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("VolumeChanged"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            let vol = AppState.shared.volume
+            let muted = AppState.shared.isMuted
+            let js = "window.appVolume = \(vol); window.appMuted = \(muted ? "true" : "false"); var video = document.querySelector('video'); if (video) { video.volume = \(vol); video.muted = \(muted ? "true" : "false"); }"
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
         
         // Register observer to navigate to the current song's artist

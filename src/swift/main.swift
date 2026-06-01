@@ -26,6 +26,17 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(lyricsScale, forKey: "lyricsScale")
         }
     }
+    @Published var volume: Double {
+        didSet {
+            UserDefaults.standard.set(volume, forKey: "appVolume")
+        }
+    }
+    @Published var isMuted: Bool {
+        didSet {
+            UserDefaults.standard.set(isMuted, forKey: "appIsMuted")
+        }
+    }
+    @Published var isDraggingVolume = false
     
     @Published var lyricLines: [LyricLine] = []
     @Published var activeLyricIndex: Int? = nil
@@ -48,10 +59,14 @@ class AppState: ObservableObject {
         let savedSidebar = UserDefaults.standard.object(forKey: "showSidebarLyrics") as? Bool ?? false
         let savedDesktop = UserDefaults.standard.object(forKey: "showDesktopLyrics") as? Bool ?? false
         let savedScale = UserDefaults.standard.double(forKey: "lyricsScale")
+        let savedVolume = UserDefaults.standard.object(forKey: "appVolume") as? Double ?? 1.0
+        let savedMuted = UserDefaults.standard.bool(forKey: "appIsMuted")
         
         self.showSidebarLyrics = savedSidebar
         self.showDesktopLyrics = savedDesktop
         self.lyricsScale = savedScale > 0 ? savedScale : 1.0
+        self.volume = savedVolume
+        self.isMuted = savedMuted
         self.appLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
     }
     
@@ -93,6 +108,8 @@ class AppState: ObservableObject {
         case "简体中文 (Chinese)": return isZh ? "简体中文" : "Chinese"
         case "English (English)": return isZh ? "English" : "English"
         case "Quit": return isZh ? "退出" : "Quit"
+        case "Mute": return isZh ? "静音" : "Mute"
+        case "Unmute": return isZh ? "取消静音" : "Unmute"
         
         case "Lyrics": return isZh ? "歌词" : "Lyrics"
         case "Matched: ": return isZh ? "已匹配：" : "Matched: "
