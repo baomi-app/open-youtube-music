@@ -30,6 +30,10 @@
       "双面板同步歌词：具备 Apple Music 风格的侧边栏滚动歌词以及透明悬浮的桌面歌词秀。"
     ]
   },
+  "troubleshooting": {
+    "en": "If macOS Gatekeeper prevents the unsigned app from running (damaged / developer unverified), run this command in Terminal to bypass: xattr -cr '/Applications/Open YouTube Music.app'",
+    "zh": "如果因未签名导致 macOS Gatekeeper 提示『已损坏无法打开』或『无法验证开发者』，请在终端（Terminal）运行此命令：xattr -cr '/Applications/Open YouTube Music.app'"
+  },
   "tech": ["Swift", "SwiftUI", "AppKit", "WebKit", "MediaPlayer"],
   "links": [
     {

@@ -17,21 +17,108 @@ struct LyricSearchResult: Identifiable, Equatable, Hashable {
     let albumName: String
     let duration: TimeInterval
     let syncedLyrics: String
+    var isNetease: Bool = false
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+        hasher.combine(isNetease)
     }
     
     static func == (lhs: LyricSearchResult, rhs: LyricSearchResult) -> Bool {
-        return lhs.id == rhs.id
+        return lhs.id == rhs.id && lhs.isNetease == rhs.isNetease
     }
+}
+
+struct LyricCorrectionEntry: Codable {
+    let source: String       // "netease" or "lrclib"
+    let id: Int             // The unique ID from the lyric source
+    let trackName: String   // Selected lyric track name (for debugging/readability)
+    let artistName: String  // Selected lyric artist name (for debugging/readability)
+    let timestamp: TimeInterval // Unix epoch timestamp
 }
 
 class LyricsManager {
     static let shared = LyricsManager()
     
+    private var correctionsMap: [String: LyricCorrectionEntry] = [:]
+    private let correctionsLock = NSLock()
+    
+    private var correctionsFileUrl: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appDir = appSupport.appendingPathComponent("Open YouTube Music")
+        // Ensure directory exists dynamically
+        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true, attributes: nil)
+        return appDir.appendingPathComponent("user_lyrics_map.json")
+    }
+    
+    private init() {
+        loadCorrections()
+    }
+    
+    func loadCorrections() {
+        correctionsLock.lock()
+        defer { correctionsLock.unlock() }
+        
+        let url = correctionsFileUrl
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            self.correctionsMap = try decoder.decode([String: LyricCorrectionEntry].self, from: data)
+            print("✓ Loaded \(self.correctionsMap.count) lyric manual correction memories.")
+        } catch {
+            print("⚠️ Failed to load lyric corrections: \(error)")
+        }
+    }
+    
+    func saveCorrections() {
+        correctionsLock.lock()
+        defer { correctionsLock.unlock() }
+        
+        let url = correctionsFileUrl
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(self.correctionsMap)
+            try data.write(to: url, options: .atomic)
+            print("✓ Saved \(self.correctionsMap.count) lyric manual correction memories.")
+        } catch {
+            print("⚠️ Failed to save lyric corrections: \(error)")
+        }
+    }
+    
+    func getCorrection(for key: String) -> LyricCorrectionEntry? {
+        correctionsLock.lock()
+        defer { correctionsLock.unlock() }
+        return correctionsMap[key]
+    }
+    
+    func saveCorrection(for key: String, entry: LyricCorrectionEntry) {
+        correctionsLock.lock()
+        correctionsMap[key] = entry
+        
+        // Also save for bilingual split parts if the title contains separators
+        let parts = key.components(separatedBy: " - ")
+        if parts.count >= 2 {
+            let title = parts[0]
+            let artist = parts.dropFirst().joined(separator: " - ")
+            let titleParts = splitBilingualTitle(title)
+            for part in titleParts {
+                let partKey = "\(part) - \(artist)"
+                if correctionsMap[partKey] == nil {
+                    correctionsMap[partKey] = entry
+                    print("✓ Saved bilingual alias memory: '\(partKey)' -> \(entry.source):\(entry.id)")
+                }
+            }
+        }
+        correctionsLock.unlock()
+        
+        saveCorrections()
+    }
+    
     private func setupUserAgent(on request: inout URLRequest) {
-        request.setValue("Open-YouTube-Music-macOS/1.0.7 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Open-YouTube-Music-macOS/1.0.9 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
     }
     
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
@@ -95,7 +182,7 @@ class LyricsManager {
     }
     
     // Metadata Suffix Cleanups
-    private func cleanTitle(_ title: String) -> String {
+    func cleanTitle(_ title: String) -> String {
         var cleaned = title
         
         // Remove common YouTube/YTM suffixes, soundtrack, cover, and theme identifiers
@@ -117,7 +204,7 @@ class LyricsManager {
         return cleaned.isEmpty ? title : cleaned
     }
     
-    private func cleanArtist(_ artist: String) -> String {
+    func cleanArtist(_ artist: String) -> String {
         var cleaned = artist
         
         // Split by primary indicators
@@ -210,7 +297,41 @@ class LyricsManager {
         let cleanedTitle = cleanTitle(title)
         let cleanedArtist = cleanArtist(artist)
         let durationSec = (duration.isNaN || duration.isInfinite) ? 0 : Int(duration)
+        let cacheKey = "\(cleanedTitle) - \(cleanedArtist)"
 
+        // 1. Check if a manual lyric correction memory is saved for this song
+        if let entry = getCorrection(for: cacheKey) {
+            print("✓ Found manual lyric correction memory: \(entry.source):\(entry.id) for '\(cacheKey)'")
+            if entry.source == "netease" {
+                self.fetchNeteaseLyricsById(songId: entry.id, trackName: entry.trackName, artistName: entry.artistName) { [weak self] lines, mTitle, mArtist in
+                    if let lines = lines, !lines.isEmpty {
+                        completion(lines, mTitle, mArtist)
+                    } else {
+                        print("⚠️ Stale netease correction entry \(entry.id) returned empty lyrics. Falling back to default search flow...")
+                        guard let self = self else { completion(nil, nil, nil); return }
+                        self.executeDefaultFetchFlow(title: title, artist: artist, cleanedTitle: cleanedTitle, cleanedArtist: cleanedArtist, durationSec: durationSec, completion: completion)
+                    }
+                }
+                return
+            } else if entry.source == "lrclib" {
+                self.fetchLrcLibLyricsById(id: entry.id, trackName: entry.trackName, artistName: entry.artistName) { [weak self] lines, mTitle, mArtist in
+                    if let lines = lines, !lines.isEmpty {
+                        completion(lines, mTitle, mArtist)
+                    } else {
+                        print("⚠️ Stale lrclib correction entry \(entry.id) returned empty lyrics. Falling back to default search flow...")
+                        guard let self = self else { completion(nil, nil, nil); return }
+                        self.executeDefaultFetchFlow(title: title, artist: artist, cleanedTitle: cleanedTitle, cleanedArtist: cleanedArtist, durationSec: durationSec, completion: completion)
+                    }
+                }
+                return
+            }
+        }
+
+        // 2. No memory found, run the default cascading search flow
+        executeDefaultFetchFlow(title: title, artist: artist, cleanedTitle: cleanedTitle, cleanedArtist: cleanedArtist, durationSec: durationSec, completion: completion)
+    }
+
+    private func executeDefaultFetchFlow(title: String, artist: String, cleanedTitle: String, cleanedArtist: String, durationSec: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         print("🔍 Syncing lyrics: Querying Netease Cloud Music first...")
         self.tryNeteaseLyrics(title: title, artist: artist, duration: durationSec) { [weak self] lines, mTitle, mArtist in
             if let lines = lines, !lines.isEmpty {
@@ -375,7 +496,46 @@ class LyricsManager {
         }
     }
 
-    private func fetchNeteaseLyricsById(songId: Int, trackName: String, artistName: String, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+    func fetchLrcLibLyricsById(id: Int, trackName: String, artistName: String, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
+        let urlString = "https://lrclib.net/api/get/\(id)"
+        guard let url = URL(string: urlString) else {
+            completion(nil, nil, nil)
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        setupUserAgent(on: &request)
+        request.timeoutInterval = 6.0
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self, let data = data, error == nil else {
+                completion(nil, nil, nil)
+                return
+            }
+            
+            if self.checkHTMLBlock(data, from: urlString) {
+                completion(nil, nil, nil)
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let syncedLrc = json["syncedLyrics"] as? String {
+                    let parsed = self.parseLRC(syncedLrc)
+                    if !parsed.isEmpty {
+                        print("✓ Success: Synced lyrics loaded from LrcLib by ID \(id)!")
+                        completion(parsed, trackName, artistName)
+                        return
+                    }
+                }
+            } catch {
+                print("✗ Failed to parse LrcLib get by ID response: \(error)")
+            }
+            completion(nil, nil, nil)
+        }.resume()
+    }
+
+    func fetchNeteaseLyricsById(songId: Int, trackName: String, artistName: String, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {
         let urlString = "https://music.163.com/api/song/lyric?os=pc&id=\(songId)&lv=-1&kv=-1&tv=-1"
         guard let url = URL(string: urlString) else {
             completion(nil, nil, nil)
@@ -567,69 +727,129 @@ class LyricsManager {
         }
     }
 
-    // Search synced lyrics from LrcLib returning all matching candidates
+    // Search synced lyrics from both LrcLib and Netease Cloud Music concurrently returning all matching candidates
     func searchSyncedLyrics(query: String, completion: @escaping ([LyricSearchResult]?) -> Void) {
         guard !query.isEmpty else {
             completion(nil)
             return
         }
-        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://lrclib.net/api/search?q=\(encodedQuery)"
         
-        guard let url = URL(string: urlString) else {
-            completion(nil)
-            return
+        let dispatchGroup = DispatchGroup()
+        var mergedResults: [LyricSearchResult] = []
+        let resultsLock = NSLock()
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        
+        // 1. Query LrcLib
+        dispatchGroup.enter()
+        let lrclibUrlString = "https://lrclib.net/api/search?q=\(encodedQuery)"
+        if let lrclibUrl = URL(string: lrclibUrlString) {
+            var request = URLRequest(url: lrclibUrl)
+            setupUserAgent(on: &request)
+            request.timeoutInterval = 6.0
+            
+            URLSession.shared.dataTask(with: request) { data, _, error in
+                defer { dispatchGroup.leave() }
+                guard let data = data, error == nil else { return }
+                if LyricsManager.shared.checkHTMLBlock(data, from: lrclibUrlString) { return }
+                
+                do {
+                    if let jsonResults = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                        let filtered = jsonResults.filter { ($0["syncedLyrics"] as? String) != nil }
+                        var list: [LyricSearchResult] = []
+                        for dict in filtered {
+                            if let id = dict["id"] as? Int,
+                               let trackName = dict["trackName"] as? String,
+                               let artistName = dict["artistName"] as? String,
+                               let syncedLrc = dict["syncedLyrics"] as? String {
+                                let albumName = dict["albumName"] as? String ?? ""
+                                let duration = dict["duration"] as? Double ?? 0.0
+                                
+                                list.append(LyricSearchResult(
+                                    id: id,
+                                    trackName: trackName,
+                                    artistName: artistName,
+                                    albumName: albumName,
+                                    duration: duration,
+                                    syncedLyrics: syncedLrc,
+                                    isNetease: false
+                                ))
+                            }
+                        }
+                        resultsLock.lock()
+                        mergedResults.append(contentsOf: list)
+                        resultsLock.unlock()
+                    }
+                } catch {
+                    print("✗ LrcLib search JSON parse error: \(error)")
+                }
+            }.resume()
+        } else {
+            dispatchGroup.leave()
         }
         
-        var request = URLRequest(url: url)
-        setupUserAgent(on: &request)
-        request.timeoutInterval = 8.0
-        
-        print("🔍 Searching synced lyrics list for Query='\(query)'")
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            guard let data = data, error == nil else {
-                completion(nil)
-                return
-            }
+        // 2. Query Netease Cloud Music
+        dispatchGroup.enter()
+        let neteaseUrlString = "https://music.163.com/api/search/get/web?s=\(encodedQuery)&type=1&limit=5"
+        if let neteaseUrl = URL(string: neteaseUrlString) {
+            var request = URLRequest(url: neteaseUrl)
+            setupUserAgent(on: &request)
+            request.timeoutInterval = 6.0
             
-            if LyricsManager.shared.checkHTMLBlock(data, from: urlString) {
-                completion(nil)
-                return
-            }
-            
-            do {
-                if let results = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                    // Filter candidates containing syncedLyrics
-                    let filtered = results.filter { ($0["syncedLyrics"] as? String) != nil }
-                    var list: [LyricSearchResult] = []
-                    
-                    for dict in filtered {
-                        if let id = dict["id"] as? Int,
-                           let trackName = dict["trackName"] as? String,
-                           let artistName = dict["artistName"] as? String,
-                           let syncedLrc = dict["syncedLyrics"] as? String {
-                            let albumName = dict["albumName"] as? String ?? ""
-                            let duration = dict["duration"] as? Double ?? 0.0
+            URLSession.shared.dataTask(with: request) { data, _, error in
+                defer { dispatchGroup.leave() }
+                guard let data = data, error == nil else { return }
+                
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let result = json["result"] as? [String: Any],
+                       let songs = result["songs"] as? [[String: Any]] {
+                        
+                        var list: [LyricSearchResult] = []
+                        for song in songs {
+                            guard let songId = song["id"] as? Int,
+                                  let songName = song["name"] as? String else { continue }
+                            
+                            var artistName = ""
+                            if let artists = song["artists"] as? [[String: Any]] {
+                                let names = artists.compactMap { $0["name"] as? String }
+                                artistName = names.joined(separator: " & ")
+                            }
+                            
+                            var albumName = ""
+                            if let album = song["album"] as? [String: Any] {
+                                albumName = album["name"] as? String ?? ""
+                            }
+                            
+                            let candDurationMs = song["duration"] as? Int ?? 0
+                            let candDurationSec = Double(candDurationMs) / 1000.0
                             
                             list.append(LyricSearchResult(
-                                id: id,
-                                trackName: trackName,
+                                id: songId,
+                                trackName: songName,
                                 artistName: artistName,
                                 albumName: albumName,
-                                duration: duration,
-                                syncedLyrics: syncedLrc
+                                duration: candDurationSec,
+                                syncedLyrics: "",
+                                isNetease: true
                             ))
                         }
+                        resultsLock.lock()
+                        mergedResults.append(contentsOf: list)
+                        resultsLock.unlock()
                     }
-                    print("✓ Found \(list.count) synced lyrics candidates for Query='\(query)'")
-                    completion(list)
-                    return
+                } catch {
+                    print("✗ Netease search JSON parse error: \(error)")
                 }
-            } catch {
-                print("✗ Failed to parse search list: \(error)")
-            }
-            completion(nil)
-        }.resume()
+            }.resume()
+        } else {
+            dispatchGroup.leave()
+        }
+        
+        // 3. Notify completion
+        dispatchGroup.notify(queue: .main) {
+            print("✓ Combined search found \(mergedResults.count) candidates for Query='\(query)'")
+            completion(mergedResults)
+        }
     }
 
     private func tryTraditionalAndSimplifiedWaterfall(title: String, artist: String, duration: Int, completion: @escaping ([LyricLine]?, String?, String?) -> Void) {

@@ -110,6 +110,7 @@ class AppState: ObservableObject {
         case "Quit": return isZh ? "退出" : "Quit"
         case "Mute": return isZh ? "静音" : "Mute"
         case "Unmute": return isZh ? "取消静音" : "Unmute"
+        case "Re-select": return isZh ? "重新选择" : "Re-select"
         
         case "Lyrics": return isZh ? "歌词" : "Lyrics"
         case "Matched: ": return isZh ? "已匹配：" : "Matched: "
@@ -226,12 +227,65 @@ class AppState: ObservableObject {
     
     // Selecting and loading a specific candidate from the search results
     func selectSearchResult(_ result: LyricSearchResult) {
-        let parsed = LyricsManager.shared.parseLRC(result.syncedLyrics)
-        if !parsed.isEmpty {
-            self.lyricLines = parsed
-            self.matchedTitle = result.trackName
-            self.matchedArtist = result.artistName
-            self.searchResults = [] // Clear search results list
+        self.activeLyricIndex = nil
+        let targetTitle = self.trackTitle
+        let targetArtist = self.trackArtist
+        
+        if result.isNetease {
+            self.lyricsLoading = true
+            self.lyricLines = []
+            self.matchedTitle = "Loading from Netease..."
+            self.matchedArtist = result.trackName
+            
+            LyricsManager.shared.fetchNeteaseLyricsById(songId: result.id, trackName: result.trackName, artistName: result.artistName) { [weak self] lines, mTitle, mArtist in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.lyricsLoading = false
+                    if let lines = lines, !lines.isEmpty {
+                        self.lyricLines = lines
+                        self.matchedTitle = mTitle ?? result.trackName
+                        self.matchedArtist = mArtist ?? result.artistName
+                        self.searchResults = [] // Clear list on success
+                        
+                        // Save manual correction memory
+                        let cleanedTitle = LyricsManager.shared.cleanTitle(targetTitle)
+                        let cleanedArtist = LyricsManager.shared.cleanArtist(targetArtist)
+                        let cacheKey = "\(cleanedTitle) - \(cleanedArtist)"
+                        let entry = LyricCorrectionEntry(
+                            source: "netease",
+                            id: result.id,
+                            trackName: result.trackName,
+                            artistName: result.artistName,
+                            timestamp: Date().timeIntervalSince1970
+                        )
+                        LyricsManager.shared.saveCorrection(for: cacheKey, entry: entry)
+                    } else {
+                        self.matchedTitle = "Load failed"
+                        self.matchedArtist = "Try another candidate"
+                    }
+                }
+            }
+        } else {
+            let parsed = LyricsManager.shared.parseLRC(result.syncedLyrics)
+            if !parsed.isEmpty {
+                self.lyricLines = parsed
+                self.matchedTitle = result.trackName
+                self.matchedArtist = result.artistName
+                self.searchResults = [] // Clear search results list
+                
+                // Save manual correction memory
+                let cleanedTitle = LyricsManager.shared.cleanTitle(targetTitle)
+                let cleanedArtist = LyricsManager.shared.cleanArtist(targetArtist)
+                let cacheKey = "\(cleanedTitle) - \(cleanedArtist)"
+                let entry = LyricCorrectionEntry(
+                    source: "lrclib",
+                    id: result.id,
+                    trackName: result.trackName,
+                    artistName: result.artistName,
+                    timestamp: Date().timeIntervalSince1970
+                )
+                LyricsManager.shared.saveCorrection(for: cacheKey, entry: entry)
+            }
         }
     }
 }
@@ -294,6 +348,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var currentTitle = ""
     private var currentArtist = ""
     private var hasValidDurationFetched = false
+    private var lyricsFetchWorkItem: DispatchWorkItem?
+    private var bannedAlbumArtUrl = ""
+    private var metadataFetchWorkItem: DispatchWorkItem?
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Redirect standard output to ~/Library/Logs/Open YouTube Music/openytmusic.log on launch
@@ -500,20 +557,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let albumArt = userInfo["albumArt"] as? String ?? ""
         let playing = userInfo["playing"] as? Bool ?? false
         
-        // Update central published properties for SwiftUI native control bar
+        let songChanged = (title != currentTitle || artist != currentArtist)
+        
+        // Update central published properties for SwiftUI native control bar instantly
         DispatchQueue.main.async {
             AppState.shared.trackTitle = title.isEmpty ? "Not Playing" : title
             AppState.shared.trackArtist = artist
             AppState.shared.trackAlbum = album
-            AppState.shared.trackAlbumArt = albumArt
+            
+            if title.isEmpty {
+                AppState.shared.trackAlbumArt = ""
+                self.bannedAlbumArtUrl = ""
+            } else if songChanged {
+                // Record the old artwork URL to ban it until a new one arrives
+                self.bannedAlbumArtUrl = AppState.shared.trackAlbumArt
+                
+                // Instantly clear the cover art to show the loading placeholder,
+                // while the text title/artist updates instantly above!
+                AppState.shared.trackAlbumArt = ""
+            } else {
+                // If it's the same song, only update if the artwork is not empty and is not the banned old one
+                if !albumArt.isEmpty && albumArt != self.bannedAlbumArtUrl {
+                    AppState.shared.trackAlbumArt = albumArt
+                    self.bannedAlbumArtUrl = "" // Reset ban once the new art successfully loaded
+                }
+            }
+            
             AppState.shared.isPlaying = playing
             AppState.shared.currentTime = currentTime
             AppState.shared.duration = duration
         }
         
         // If song changed or valid duration finally arrived, trigger asynchronous lyrics fetch
-        let songChanged = (title != currentTitle || artist != currentArtist)
-        
         if (songChanged && !title.isEmpty) || (!hasValidDurationFetched && duration > 0 && !title.isEmpty) {
             if songChanged {
                 currentTitle = title

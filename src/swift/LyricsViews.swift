@@ -31,8 +31,14 @@ struct SidebarLyricsView: View {
                 Button(action: {
                     withAnimation {
                         showSearchBar.toggle()
-                        if showSearchBar && searchQuery.isEmpty {
-                            searchQuery = state.trackTitle == "Not Playing" ? "" : state.trackTitle
+                        if showSearchBar {
+                            let query = state.trackTitle == "Not Playing" ? "" : "\(state.trackTitle) \(state.trackArtist)".trimmingCharacters(in: .whitespacesAndNewlines)
+                            searchQuery = query
+                            if !query.isEmpty {
+                                state.triggerSearchList(query: query)
+                            }
+                        } else {
+                            state.searchResults = []
                         }
                     }
                 }) {
@@ -126,6 +132,15 @@ struct SidebarLyricsView: View {
                                                 .font(.system(size: 13, weight: .bold))
                                                 .foregroundColor(.white)
                                                 .lineLimit(1)
+                                            
+                                            Text(result.isNetease ? "Netease" : "LrcLib")
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(result.isNetease ? Color.red.opacity(0.6) : Color.blue.opacity(0.6))
+                                                .cornerRadius(4)
+                                            
                                             Spacer()
                                             Text(formatDuration(result.duration))
                                                 .font(.system(size: 11))
@@ -327,11 +342,11 @@ struct SidebarLyricsView: View {
         }
         .onAppear {
             if searchQuery.isEmpty && state.trackTitle != "Not Playing" {
-                searchQuery = state.trackTitle
+                searchQuery = "\(state.trackTitle) \(state.trackArtist)".trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
         .onChange(of: state.trackTitle) { newTitle in
-            searchQuery = newTitle == "Not Playing" ? "" : newTitle
+            searchQuery = newTitle == "Not Playing" ? "" : "\(newTitle) \(state.trackArtist)".trimmingCharacters(in: .whitespacesAndNewlines)
             showSearchBar = false
         }
     }
@@ -380,7 +395,7 @@ struct DesktopLyricsView: View {
                     .animation(.easeInOut(duration: 0.25), value: statusText)
             } else {
                 let activeIndex = state.activeLyricIndex ?? -1
-                let isPrelude = activeIndex < 0
+                let isPrelude = activeIndex < 0 || activeIndex >= state.lyricLines.count
                 
                 if isPrelude {
                     Text("···")
