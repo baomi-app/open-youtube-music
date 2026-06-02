@@ -91,6 +91,38 @@ struct SidebarLyricsView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.horizontal, 20)
+                    
+                    // Don't Use Any Lyrics Action Card
+                    Button(action: {
+                        withAnimation {
+                            state.selectNoLyrics()
+                            showSearchBar = false
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(.red)
+                                .font(.system(size: 13))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(state.loc("Don't Use Any Lyrics (Set Empty)"))
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.red)
+                                Text(state.loc("Bypass lyric search and show empty for this song"))
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            Spacer()
+                            Image(systemName: "nosign")
+                                .foregroundColor(.red.opacity(0.6))
+                                .font(.system(size: 11))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))

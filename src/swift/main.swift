@@ -124,6 +124,8 @@ class AppState: ObservableObject {
         case "Advance Lyrics (-0.5s)": return isZh ? "歌词提前 (-0.5秒)" : "Advance Lyrics (-0.5s)"
         case "Reset": return isZh ? "重置" : "Reset"
         case "Search Results (": return isZh ? "搜索结果 (" : "Search Results ("
+        case "Don't Use Any Lyrics (Set Empty)": return isZh ? "不设置任何歌词 (设为空)" : "Don't Use Any Lyrics (Set Empty)"
+        case "Bypass lyric search and show empty for this song": return isZh ? "对此歌曲跳过歌词搜索并显示为空白" : "Bypass lyric search and show empty for this song"
         
         case "Small (80%)": return isZh ? "较小 (80%)" : "Small (80%)"
         case "Normal (100%)": return isZh ? "标准 (100%)" : "Normal (100%)"
@@ -287,6 +289,31 @@ class AppState: ObservableObject {
                 LyricsManager.shared.saveCorrection(for: cacheKey, entry: entry)
             }
         }
+    }
+    
+    func selectNoLyrics() {
+        self.activeLyricIndex = nil
+        let targetTitle = self.trackTitle
+        let targetArtist = self.trackArtist
+        
+        self.lyricsLoading = false
+        self.lyricLines = []
+        self.matchedTitle = "No Lyrics"
+        self.matchedArtist = ""
+        self.searchResults = [] // Clear search results list
+        
+        // Save manual correction memory indicating "none"
+        let cleanedTitle = LyricsManager.shared.cleanTitle(targetTitle)
+        let cleanedArtist = LyricsManager.shared.cleanArtist(targetArtist)
+        let cacheKey = "\(cleanedTitle) - \(cleanedArtist)"
+        let entry = LyricCorrectionEntry(
+            source: "none",
+            id: 0,
+            trackName: "None",
+            artistName: "None",
+            timestamp: Date().timeIntervalSince1970
+        )
+        LyricsManager.shared.saveCorrection(for: cacheKey, entry: entry)
     }
 }
 

@@ -324,6 +324,10 @@ class LyricsManager {
                     }
                 }
                 return
+            } else if entry.source == "none" {
+                print("✓ Manual correction memory explicitly set to NONE (no lyrics) for '\(cacheKey)'")
+                completion([], "No Lyrics", "")
+                return
             }
         }
 

@@ -65,6 +65,132 @@ struct WebView: NSViewRepresentable {
         let consoleLoggerScript = WKUserScript(source: consoleLoggerSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         userContentController.addUserScript(consoleLoggerScript)
         
+        // Volume prototype monkey-patch to completely eliminate intermediate volume spikes/shocks!
+        let volumeHookSource = """
+        (function() {
+            try {
+                // 1. Prototype Setter Override
+                var volumeDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+                if (volumeDescriptor && volumeDescriptor.set) {
+                    var originalVolumeSetter = volumeDescriptor.set;
+                    Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
+                        get: function() {
+                            return volumeDescriptor.get.call(this);
+                        },
+                        set: function(val) {
+                            var targetVol = (typeof window.appVolume !== 'undefined') ? window.appVolume : val;
+                            originalVolumeSetter.call(this, targetVol);
+                        },
+                        configurable: true
+                    });
+                }
+                
+                var mutedDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+                if (mutedDescriptor && mutedDescriptor.set) {
+                    var originalMutedSetter = mutedDescriptor.set;
+                    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
+                        get: function() {
+                            return mutedDescriptor.get.call(this);
+                        },
+                        set: function(val) {
+                            var targetMute = (typeof window.appMuted !== 'undefined') ? window.appMuted : val;
+                            originalMutedSetter.call(this, targetMute);
+                        },
+                        configurable: true
+                    });
+                }
+
+                // 2. Play Hook: ensure any playback starting on a media element enforces window.appVolume
+                var originalPlay = HTMLMediaElement.prototype.play;
+                if (originalPlay) {
+                    HTMLMediaElement.prototype.play = function() {
+                        if (typeof window.appVolume !== 'undefined') {
+                            var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+                            if (volDesc && volDesc.set) {
+                                volDesc.set.call(this, window.appVolume);
+                            } else {
+                                this.volume = window.appVolume;
+                            }
+                        }
+                        if (typeof window.appMuted !== 'undefined') {
+                            var muteDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+                            if (muteDesc && muteDesc.set) {
+                                muteDesc.set.call(this, window.appMuted);
+                            } else {
+                                this.muted = window.appMuted;
+                            }
+                        }
+                        return originalPlay.apply(this, arguments);
+                    };
+                }
+
+                // 3. Document.prototype.createElement Hook: enforce volume immediately upon dynamic creation
+                var originalCreateElement = Document.prototype.createElement;
+                if (originalCreateElement) {
+                    Document.prototype.createElement = function(tagName) {
+                        var element = originalCreateElement.apply(this, arguments);
+                        var tag = tagName ? tagName.toLowerCase() : "";
+                        if (tag === 'video' || tag === 'audio') {
+                            setTimeout(function() {
+                                if (typeof window.appVolume !== 'undefined') {
+                                    var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+                                    if (volDesc && volDesc.set) {
+                                        volDesc.set.call(element, window.appVolume);
+                                    } else {
+                                        element.volume = window.appVolume;
+                                    }
+                                }
+                                if (typeof window.appMuted !== 'undefined') {
+                                    var muteDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+                                    if (muteDesc && muteDesc.set) {
+                                        muteDesc.set.call(element, window.appMuted);
+                                    } else {
+                                        element.muted = window.appMuted;
+                                    }
+                                }
+                            }, 0);
+                        }
+                        return element;
+                    };
+                }
+
+                // 4. Capture-phase volumechange/mutechange Event Listener
+                window.addEventListener('volumechange', function(e) {
+                    var target = e.target;
+                    if (target && typeof window.appVolume !== 'undefined') {
+                        var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+                        if (volDesc && volDesc.set) {
+                            if (target.volume !== window.appVolume) {
+                                volDesc.set.call(target, window.appVolume);
+                            }
+                        } else {
+                            if (target.volume !== window.appVolume) {
+                                target.volume = window.appVolume;
+                            }
+                        }
+                    }
+                    if (target && typeof window.appMuted !== 'undefined') {
+                        var muteDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+                        if (muteDesc && muteDesc.set) {
+                            if (target.muted !== window.appMuted) {
+                                muteDesc.set.call(target, window.appMuted);
+                            }
+                        } else {
+                            if (target.muted !== window.appMuted) {
+                                target.muted = window.appMuted;
+                            }
+                        }
+                    }
+                }, true);
+
+            } catch(e) {
+                console.error('Failed to override volume/muted setters:', e);
+            }
+        })();
+        """
+        let volumeHookScript = WKUserScript(source: volumeHookSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        userContentController.addUserScript(volumeHookScript)
+        
         // 3. Inject CSS Theme (Base64-encoded to guarantee zero character escaping/syntax errors, safely prepended to documentElement using MutationObserver at earliest millisecond!)
         let base64CSS = Data(ThemeCSS.css.utf8).base64EncodedString()
         let cssSource = """
