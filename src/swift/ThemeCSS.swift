@@ -92,15 +92,21 @@ struct ThemeCSS {
       pointer-events: none !important;
     }
 
-    /* Pull the logo to the left to align beautifully next to the traffic lights */
+    /* Pull the left content container to the left */
     ytmusic-nav-bar .left-content {
       padding-left: 0px !important;
     }
 
-    /* Force YouTube Music logo and its inner link to align perfectly vertically */
+    /* Reposition the YouTube Music logo inside the sidebar under the traffic lights for a premium native look */
     ytmusic-logo {
+      position: absolute !important;
+      left: 24px !important;
+      top: 30px !important;
       display: flex !important;
       align-items: center !important;
+      z-index: 100 !important;
+      height: 32px !important;
+      pointer-events: auto !important;
     }
     ytmusic-logo a {
       display: flex !important;
