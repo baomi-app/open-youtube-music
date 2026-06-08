@@ -100,8 +100,16 @@ else
 fi
 
 echo "🚀 Build completed successfully!"
-echo "🔒 Applying local ad-hoc code signature..."
-codesign --force --deep --sign - "$APP_BUNDLE"
+if [ -n "$SIGNING_IDENTITY" ]; then
+    echo "🔒 Signing with identity: $SIGNING_IDENTITY and enabling Hardened Runtime..."
+    codesign --force --options runtime --entitlements src/swift/Entitlements.entitlements --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+else
+    echo "🔒 Applying local ad-hoc code signature..."
+    codesign --force --deep --sign - "$APP_BUNDLE"
+fi
 echo "📍 App Bundle Location: $APP_BUNDLE"
-echo "⭐ Launching $APP_NAME..."
-open -n "$APP_BUNDLE"
+
+if [ "$CI" != "true" ]; then
+    echo "⭐ Launching $APP_NAME..."
+    open -n "$APP_BUNDLE"
+fi
