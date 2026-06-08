@@ -118,7 +118,7 @@ class LyricsManager {
     }
     
     private func setupUserAgent(on request: inout URLRequest) {
-        request.setValue("Open-YouTube-Music-macOS/1.0.9 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Open-YouTube-Music-macOS/1.1.0 (https://github.com/baomi-app/open-youtube-music; contact@baomi.app)", forHTTPHeaderField: "User-Agent")
     }
     
     // Parses LRC formatted synced lyrics into a sorted array of LyricLines
